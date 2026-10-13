@@ -1,0 +1,12 @@
+# Lazarus / Free Pascal build artifacts
+lib/
+*.compiled
+*.o
+*.ppu
+*.rsj
+*.or
+*.bak
+*.~*
+*.lps
+*.identcache
+*.stat
