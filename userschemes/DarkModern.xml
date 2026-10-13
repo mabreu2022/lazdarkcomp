@@ -1,0 +1,64 @@
+<?xml version="1.0"?>
+<CONFIG>
+  <Lazarus>
+    <ColorSchemes Version="6">
+      <Names Count="1">
+        <Item1 Value="DarkModern"/>
+      </Names>
+      <Globals Version="6">
+        <SchemeDarkModern>
+          <ahaDefault Background="1973790" Foreground="13948116"/>
+          <ahaGutter Background="2434341" Foreground="8750469"/>
+          <ahaGutterSeparator Background="2434341" Foreground="4210752"/>
+          <ahaLineHighlight Background="2763310" ForePriority="500" BackPriority="500" FramePriority="500"/>
+          <ahaTextBlock Background="7884582" Foreground="16777215" ForePriority="7000" BackPriority="7000" FramePriority="7000"/>
+          <ahaBracketMatch Background="3158064" FrameColor="14064726" ForePriority="3000" BackPriority="3000" FramePriority="3000"/>
+          <ahaHighlightWord Background="3158064" FrameColor="10066329" ForePriority="3000" BackPriority="3000" FramePriority="3000"/>
+          <ahaIncrementalSearch Background="6842472" Foreground="16777215" ForePriority="4000" BackPriority="4000" FramePriority="4000"/>
+          <ahaExecutionPoint Background="16744448" Foreground="16777215" ForePriority="500" BackPriority="500" FramePriority="500"/>
+          <ahaEnabledBreakpoint Background="255" Foreground="16777215" ForePriority="500" BackPriority="500" FramePriority="500"/>
+          <ahaErrorLine Background="3618815" Foreground="16777215" ForePriority="500" BackPriority="500" FramePriority="500"/>
+          <ahaModifiedLine Foreground="59900" FrameColor="59900"/>
+          <ahaCodeFoldingTree Foreground="8750469"/>
+          <ahaRightMargin Foreground="4210752"/>
+          <ahaMouseLink Foreground="14064726" ForePriority="1500" BackPriority="2500" FramePriority="7500"/>
+          <ahaFoldedCode Foreground="8750469" FrameColor="8750469"/>
+        </SchemeDarkModern>
+      </Globals>
+      <LangObjectPascal Version="6">
+        <SchemeDarkModern>
+          <Assembler Foreground="9154448"/>
+          <Comment Foreground="5609834" Style="fsItalic"/>
+          <Directive Foreground="12617413" Style="fsBold"/>
+          <Number Foreground="11062965"/>
+          <Modifier Foreground="14064726" Style="fsBold"/>
+          <Reserved_word Foreground="14064726" Style="fsBold"/>
+          <String Foreground="7901646"/>
+          <Symbol Foreground="13948116"/>
+          <NestedRoundBracket_1 Foreground="12617413"/>
+          <NestedRoundBracket_2 Foreground="14064726"/>
+          <NestedRoundBracket_3 Foreground="11062965"/>
+        </SchemeDarkModern>
+      </LangObjectPascal>
+      <LangLazarus_Form_definition Version="6">
+        <SchemeDarkModern>
+          <Comment Foreground="5609834" Style="fsItalic"/>
+          <Key Foreground="14064726" Style="fsBold"/>
+          <Number Foreground="11062965"/>
+          <String Foreground="7901646"/>
+          <Symbol Foreground="13948116"/>
+        </SchemeDarkModern>
+      </LangLazarus_Form_definition>
+      <LangXML_document Version="6">
+        <SchemeDarkModern>
+          <Attribute_Name Foreground="10079487"/>
+          <Attribute_Value Foreground="7901646"/>
+          <Comment Foreground="5609834" Style="fsItalic"/>
+          <Element_Name Foreground="14064726" Style="fsBold"/>
+          <Symbol Foreground="13948116"/>
+          <Text Foreground="13948116"/>
+        </SchemeDarkModern>
+      </LangXML_document>
+    </ColorSchemes>
+  </Lazarus>
+</CONFIG>
