@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     Script de Restauracao e Organizacao do Layout Docado da IDE do Lazarus.
 .DESCRIPTION
@@ -26,17 +26,24 @@ if (-not $Silent) {
 
 # 1. Verificar se o Lazarus esta em execucao
 $lazProc = Get-Process -Name "lazarus", "startlazarus" -ErrorAction SilentlyContinue
-if ($lazProc -and (-not $Silent)) {
-    Write-Host "[!] O Lazarus está em execução no momento." -ForegroundColor Yellow
-    Write-Host "    Para que as configurações não sejam sobrescritas ao sair, o Lazarus precisa ser fechado."
-    $resp = Read-Host "    Deseja fechar o Lazarus agora para continuar? (S/N)"
-    if ($resp -match "^[sSyY]") {
-        $lazProc | Stop-Process -Force
-        Start-Sleep -Seconds 1
-        Write-Host "[+] Lazarus fechado com sucesso." -ForegroundColor Green
+if ($lazProc) {
+    if (-not $Silent) {
+        Write-Host "[!] O Lazarus está em execução no momento." -ForegroundColor Yellow
+        Write-Host "    Para que as configurações não sejam sobrescritas ao sair, o Lazarus precisa ser fechado."
+        $resp = Read-Host "    Deseja fechar o Lazarus agora para continuar? (S/N)"
+        if ($resp -match "^[sSyY]") {
+            $lazProc | Stop-Process -Force
+            Start-Sleep -Seconds 1
+            Write-Host "[+] Lazarus fechado com sucesso." -ForegroundColor Green
+        } else {
+            Write-Host "[-] Operação cancelada. Feche o Lazarus e tente novamente." -ForegroundColor Red
+            return
+        }
     } else {
-        Write-Host "[-] Operação cancelada. Feche o Lazarus e tente novamente." -ForegroundColor Red
-        return
+        # No modo silencioso (disparado pela IDE antes de reiniciar), aguarda o processo
+        # atual do Lazarus encerrar completamente para nao ter sua gravacao de saida sobrescrevendo os arquivos
+        $lazProc | Wait-Process -Timeout 15 -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 600
     }
 }
 
@@ -210,16 +217,15 @@ $dockedFormOptXml = @"
 "@
 [System.IO.File]::WriteAllText($dockedFormOptPath, $dockedFormOptXml, [System.Text.Encoding]::UTF8)
 
-# 6. Atualizar anchordocklayout.xml e travar como SOMENTE LEITURA
+# 6. Atualizar anchordocklayout.xml garantindo permissao normal de gravacao
 $layoutFilePath = Join-Path $configDir "anchordocklayout.xml"
 if (Test-Path $layoutFilePath) {
     Set-ItemProperty -Path $layoutFilePath -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
 }
 [System.IO.File]::WriteAllText($layoutFilePath, $anchorDockLayoutFileContent, [System.Text.Encoding]::UTF8)
-Set-ItemProperty -Path $layoutFilePath -Name IsReadOnly -Value $true
-attrib +r $layoutFilePath
+Set-ItemProperty -Path $layoutFilePath -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
 if (-not $Silent) {
-    Write-Host "[+] Arquivo 'anchordocklayout.xml' gerado e bloqueado como SOMENTE LEITURA com sucesso." -ForegroundColor Green
+    Write-Host "[+] Arquivo 'anchordocklayout.xml' gerado com layout limpo e padronizado." -ForegroundColor Green
 }
 
 # 7. Atualizar environmentoptions.xml corrigindo Desktop e CustomPosition
@@ -351,8 +357,13 @@ if (-not $Silent) {
     Write-Host "  * Direita:    Inspetor de Projeto (Topo) e Explorador de Código (Base)" -ForegroundColor Cyan
     Write-Host ""
 
-    $lazarusExe = "C:\lazarus\lazarus.exe"
-    if (-not (Test-Path $lazarusExe)) {
+    $lazarusExe = ""
+    $cmd = Get-Command "lazarus.exe" -ErrorAction SilentlyContinue
+    if ($cmd) {
+        $lazarusExe = $cmd.Source
+    } elseif (Test-Path "C:\lazarus\lazarus.exe") {
+        $lazarusExe = "C:\lazarus\lazarus.exe"
+    } elseif (Test-Path "D:\lazarus\lazarus.exe") {
         $lazarusExe = "D:\lazarus\lazarus.exe"
     }
 

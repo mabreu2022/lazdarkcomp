@@ -94,6 +94,7 @@ begin
     else if NewMode = amOptForceDark then
     begin
       ApplyEditorColorScheme('DarkModern');
+      RunRestorationScript;
     end;
   end;
 end;

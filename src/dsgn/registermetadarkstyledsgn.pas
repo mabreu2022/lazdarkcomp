@@ -8,7 +8,7 @@ uses
   Classes, SysUtils, Controls, Dialogs, Forms, Process,
   IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf,
   IDECommands, MenuIntf, ToolBarIntf,
-  LazConfigStorage, BaseIDEIntf, Laz2_XMLCfg,
+  LazConfigStorage, BaseIDEIntf, Laz2_XMLCfg, PackageIntf,
   uDarkStyleParams, uDarkStyleSchemes, uMetaDarkStyle,
   MetaDarkStyleDSGNOptionsFrame, MetaDarkStyleDSGNOptions;
 
@@ -19,6 +19,7 @@ var
   ToggleThemeMenuCmd: TIDEMenuCommand = nil;
 
 procedure ApplyEditorColorScheme(const AScheme: string);
+procedure ApplyCleanDockedLayout(AConfigDir: string = '');
 procedure RunRestorationScript;
 procedure Register;
 
@@ -89,6 +90,102 @@ const
     '      </LangXML_document>'#10 +
     '    </ColorSchemes>'#10 +
     '  </Lazarus>'#10 +
+    '</CONFIG>'#10;
+
+  CleanAnchorDockLayoutXML: string =
+    '<?xml version="1.0" encoding="UTF-8"?>'#10 +
+    '<CONFIG>'#10 +
+    '  <Version Value="1" />'#10 +
+    '  <MainConfig>'#10 +
+    '    <Nodes ChildCount="1">'#10 +
+    '      <Item1 Name="MainIDE" Type="CustomSite" WindowState="Maximized" Monitor="0" ChildCount="1" PixelsPerInch="120">'#10 +
+    '        <Bounds Left="-9" Top="-9" Width="1920" Height="966">'#10 +
+    '          <WorkArea>'#10 +
+    '            <Rect Right="1920" Bottom="1020" />'#10 +
+    '          </WorkArea>'#10 +
+    '        </Bounds>'#10 +
+    '        <Item1 Name="AnchorDockSite10" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="7" PixelsPerInch="120">'#10 +
+    '          <Bounds Top="100" Width="1920" Height="866" SplitterPos="98" />'#10 +
+    '          <Anchors Align="Bottom" />'#10 +
+    '          <Item1 Name="ObjectInspectorDlg" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '            <Bounds Width="324" Height="866" />'#10 +
+    '            <Anchors Right="AnchorDockSplitter4" />'#10 +
+    '          </Item1>'#10 +
+    '          <Item2 Name="AnchorDockSplitter4" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="324" Width="5" Height="866" />'#10 +
+    '          </Item2>'#10 +
+    '          <Item3 Name="SourceNotebook" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="329" Width="1223" Height="620" />'#10 +
+    '            <Anchors Left="AnchorDockSplitter4" Right="AnchorDockSplitter3" Bottom="AnchorDockSplitter2" />'#10 +
+    '          </Item3>'#10 +
+    '          <Item4 Name="AnchorDockSplitter2" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="329" Top="620" Width="1223" Height="5" />'#10 +
+    '            <Anchors Left="AnchorDockSplitter4" Right="AnchorDockSplitter3" />'#10 +
+    '          </Item4>'#10 +
+    '          <Item5 Name="AnchorDockSite11" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="329" Top="625" Width="1223" Height="241" />'#10 +
+    '            <Anchors Left="AnchorDockSplitter4" Top="AnchorDockSplitter2" Right="AnchorDockSplitter3" />'#10 +
+    '            <Header PageIndex="0" />'#10 +
+    '            <Item1 Name="MessagesView" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="1193" Height="215" />'#10 +
+    '              <Anchors Align="Client" />'#10 +
+    '            </Item1>'#10 +
+    '            <Item2 Name="SearchResults" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="1193" Height="215" />'#10 +
+    '              <Anchors Align="Client" />'#10 +
+    '            </Item2>'#10 +
+    '            <Item3 Name="Watches" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="1193" Height="215" />'#10 +
+    '              <Anchors Align="Client" />'#10 +
+    '            </Item3>'#10 +
+    '            <Item4 Name="BreakPoints" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="1193" Height="215" />'#10 +
+    '              <Anchors Align="Client" />'#10 +
+    '            </Item4>'#10 +
+    '            <Item5 Name="Assembler" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="1193" Height="215" />'#10 +
+    '              <Anchors Align="Client" />'#10 +
+    '            </Item5>'#10 +
+    '          </Item5>'#10 +
+    '          <Item6 Name="AnchorDockSplitter3" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="1552" Width="11" Height="866" />'#10 +
+    '          </Item6>'#10 +
+    '          <Item7 Name="AnchorDockSite14" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">'#10 +
+    '            <Bounds Left="1563" Width="357" Height="866" />'#10 +
+    '            <Anchors Left="AnchorDockSplitter3" />'#10 +
+    '            <Item1 Name="ProjectInspector" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Width="357" Height="340" />'#10 +
+    '              <Anchors Bottom="AnchorDockSplitter5" />'#10 +
+    '            </Item1>'#10 +
+    '            <Item2 Name="AnchorDockSplitter5" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Top="340" Width="357" Height="5" />'#10 +
+    '            </Item2>'#10 +
+    '            <Item3 Name="TLazDroidTargetDockForm" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Top="345" Width="357" Height="170" />'#10 +
+    '              <Anchors Top="AnchorDockSplitter5" Bottom="AnchorDockSplitter6" />'#10 +
+    '            </Item3>'#10 +
+    '            <Item4 Name="AnchorDockSplitter6" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '              <Bounds Top="515" Width="357" Height="5" />'#10 +
+    '            </Item4>'#10 +
+    '            <Item5 Name="AnchorDockSite15" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="2" PixelsPerInch="120">'#10 +
+    '              <Bounds Top="520" Width="357" Height="346" />'#10 +
+    '              <Anchors Top="AnchorDockSplitter6" />'#10 +
+    '              <Header PageIndex="0" />'#10 +
+    '              <Item1 Name="CodeExplorerView" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '                <Bounds Width="327" Height="310" />'#10 +
+    '                <Anchors Align="Client" />'#10 +
+    '              </Item1>'#10 +
+    '              <Item2 Name="ComponentList" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">'#10 +
+    '                <Bounds Width="327" Height="310" />'#10 +
+    '                <Anchors Align="Client" />'#10 +
+    '              </Item2>'#10 +
+    '            </Item5>'#10 +
+    '          </Item7>'#10 +
+    '        </Item1>'#10 +
+    '      </Item1>'#10 +
+    '    </Nodes>'#10 +
+    '  </MainConfig>'#10 +
+    '  <Settings FloatingWindowsOnTop="True" HeaderStyle="Line" />'#10 +
     '</CONFIG>'#10;
 
 procedure DeployDarkModernColorScheme;
@@ -191,8 +288,9 @@ end;
 
 function FindRestorationScript: string;
 var
-  Candidates: array[0..6] of string;
-  BaseDir, PrimaryCfg: string;
+  Pkg: TIDEPackage;
+  PkgDir, BaseDir, PrimaryCfg: string;
+  Candidates: array[0..7] of string;
   i: Integer;
 begin
   Result := '';
@@ -202,16 +300,46 @@ begin
   else
     PrimaryCfg := '';
 
-  Candidates[0] := 'C:\componentes\darkcomp\lazdarkcomp\scripts\Restaurar-Layout-Lazarus.cmd';
-  Candidates[1] := 'C:\componentes\darkcomp\lazdarkcomp\Restaurar-Layout-Lazarus.cmd';
-  Candidates[2] := 'D:\Projetos AntiGravity\lazdarkcomp\scripts\Restaurar-Layout-Lazarus.cmd';
-  Candidates[3] := 'D:\Projetos AntiGravity\lazdarkcomp\Restaurar-Layout-Lazarus.cmd';
-  Candidates[4] := 'D:\Projetos AntiGravity\Lazarusidefontes\components\metadark_safe\scripts\Restaurar-Layout-Lazarus.cmd';
-  Candidates[5] := 'D:\Projetos AntiGravity\LazarusAndroid\Restaurar-Layout-Lazarus.cmd';
-  if PrimaryCfg <> '' then
-    Candidates[6] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'Restaurar-Layout-Lazarus.cmd'
+  PkgDir := '';
+  if Assigned(PackageEditingInterface) then
+  begin
+    Pkg := PackageEditingInterface.FindPackageWithName('metadarkstyledsgn');
+    if Pkg = nil then
+      Pkg := PackageEditingInterface.FindPackageWithName('metadarkstyle');
+    if Pkg = nil then
+      Pkg := PackageEditingInterface.FindPackageWithName('lazdarkcomp');
+    if Pkg <> nil then
+      PkgDir := Pkg.DirectoryExpanded;
+  end;
+
+  if PkgDir <> '' then
+  begin
+    Candidates[0] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[1] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[2] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[3] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.ps1';
+  end
   else
-    Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'Restaurar-Layout-Lazarus.cmd';
+  begin
+    Candidates[0] := '';
+    Candidates[1] := '';
+    Candidates[2] := '';
+    Candidates[3] := '';
+  end;
+
+  if PrimaryCfg <> '' then
+  begin
+    Candidates[4] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[5] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'Restaurar-Layout-Lazarus.cmd';
+  end
+  else
+  begin
+    Candidates[4] := '';
+    Candidates[5] := '';
+  end;
+
+  Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+  Candidates[7] := IncludeTrailingPathDelimiter(BaseDir) + 'Restaurar-Layout-Lazarus.cmd';
 
   for i := Low(Candidates) to High(Candidates) do
   begin
@@ -220,12 +348,74 @@ begin
   end;
 end;
 
+procedure ApplyCleanDockedLayout(AConfigDir: string = '');
+var
+  TargetDir, LayoutFile, AnchorOptFile, DockedFormOptFile: string;
+  SL: TStringList;
+begin
+  try
+    if AConfigDir <> '' then
+      TargetDir := AConfigDir
+    else if LazarusIDE <> nil then
+      TargetDir := LazarusIDE.GetPrimaryConfigPath
+    else
+      Exit;
+
+    if not DirectoryExists(TargetDir) then
+      Exit;
+
+    TargetDir := IncludeTrailingPathDelimiter(TargetDir);
+
+    // 1. Gravar anchordocklayout.xml limpo
+    LayoutFile := TargetDir + 'anchordocklayout.xml';
+    SL := TStringList.Create;
+    try
+      SL.Text := CleanAnchorDockLayoutXML;
+      SL.SaveToFile(LayoutFile);
+    finally
+      SL.Free;
+    end;
+
+    // 2. Garantir anchordockingoptions.xml ativo
+    AnchorOptFile := TargetDir + 'anchordockingoptions.xml';
+    SL := TStringList.Create;
+    try
+      SL.Text := '<?xml version="1.0" encoding="UTF-8"?>'#10 +
+                 '<CONFIG>'#10 +
+                 '  <EnableAnchorDock Value="True"/>'#10 +
+                 '  <DoneAskUserEnableAnchorDock Value="True"/>'#10 +
+                 '</CONFIG>'#10;
+      SL.SaveToFile(AnchorOptFile);
+    finally
+      SL.Free;
+    end;
+
+    // 3. Garantir dockedformeditoroptions.xml ativo
+    DockedFormOptFile := TargetDir + 'dockedformeditoroptions.xml';
+    SL := TStringList.Create;
+    try
+      SL.Text := '<?xml version="1.0" encoding="UTF-8"?>'#10 +
+                 '<CONFIG>'#10 +
+                 '  <EnableDockedDesigner Value="True"/>'#10 +
+                 '  <DoneAskUserEnableDockedDesigner Value="True"/>'#10 +
+                 '</CONFIG>'#10;
+      SL.SaveToFile(DockedFormOptFile);
+    finally
+      SL.Free;
+    end;
+  except
+    // proteção contra falha de escrita em disco
+  end;
+end;
+
 procedure RunRestorationScript;
 var
-  ScriptPath, ConfigPath: string;
+  ScriptPath, ConfigPath, Ext: string;
   Proc: TProcess;
 begin
   try
+    ApplyCleanDockedLayout;
+
     ScriptPath := FindRestorationScript;
     if ScriptPath = '' then
       Exit;
@@ -234,14 +424,33 @@ begin
     if LazarusIDE <> nil then
       ConfigPath := LazarusIDE.GetPrimaryConfigPath;
 
+    Ext := LowerCase(ExtractFileExt(ScriptPath));
     Proc := TProcess.Create(nil);
     try
-      Proc.Executable := 'cmd.exe';
-      Proc.Parameters.Add('/c');
-      if ConfigPath <> '' then
-        Proc.Parameters.Add('"' + ScriptPath + '" -Silent -TargetConfigDir "' + ConfigPath + '"')
+      if Ext = '.ps1' then
+      begin
+        Proc.Executable := 'powershell.exe';
+        Proc.Parameters.Add('-NoProfile');
+        Proc.Parameters.Add('-ExecutionPolicy');
+        Proc.Parameters.Add('Bypass');
+        Proc.Parameters.Add('-File');
+        Proc.Parameters.Add(ScriptPath);
+        Proc.Parameters.Add('-Silent');
+        if ConfigPath <> '' then
+        begin
+          Proc.Parameters.Add('-TargetConfigDir');
+          Proc.Parameters.Add(ConfigPath);
+        end;
+      end
       else
-        Proc.Parameters.Add('"' + ScriptPath + '" -Silent');
+      begin
+        Proc.Executable := 'cmd.exe';
+        Proc.Parameters.Add('/c');
+        if ConfigPath <> '' then
+          Proc.Parameters.Add('"' + ScriptPath + '" -Silent -TargetConfigDir "' + ConfigPath + '"')
+        else
+          Proc.Parameters.Add('"' + ScriptPath + '" -Silent');
+      end;
       Proc.Options := [poNoConsole];
       Proc.Execute;
     finally
@@ -288,12 +497,12 @@ begin
     MetaDarkStyleDSGNOpt.AppMode := NewMode;
     MetaDarkStyleDSGNOpt.SaveSafe;
 
-    // Atualizar esquema de cores do editor de código
+    // Atualizar esquema de cores do editor de código e layout
     if NewMode = amOptForceLight then
     begin
       // Retornar ao padrão claro
       ApplyEditorColorScheme('Default');
-      // Executar o script de restauração da IDE do LazDroid
+      // Executar a restauração do layout para modo claro
       RunRestorationScript;
     end
     else
@@ -301,6 +510,8 @@ begin
       // Ativar esquema escuro no editor de códigos
       DeployDarkModernColorScheme;
       ApplyEditorColorScheme('DarkModern');
+      // Executar a restauração do layout para modo escuro
+      RunRestorationScript;
     end;
 
     if Res = mrYes then
@@ -350,6 +561,13 @@ begin
     // Se a IDE está iniciando configurada para modo claro, assegura que o editor volte ao padrão claro
     if MetaDarkStyleDSGNOpt.AppMode = amOptForceLight then
       ApplyEditorColorScheme('Default');
+
+    // Se o anchordocklayout.xml não existir, cria o layout limpo de fábrica
+    if (LazarusIDE <> nil) and (LazarusIDE.GetPrimaryConfigPath <> '') then
+    begin
+      if not FileExists(IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath) + 'anchordocklayout.xml') then
+        ApplyCleanDockedLayout(LazarusIDE.GetPrimaryConfigPath);
+    end;
 
     ApplyMetaDarkStyle(GetScheme(MetaDarkStyleDSGNOpt.ColorScheme));
   except
