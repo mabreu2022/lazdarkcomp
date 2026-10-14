@@ -35,6 +35,9 @@ type
 
 implementation
 
+uses
+  registerMetaDarkStyleDSGN;
+
 {$R *.lfm}
 
 function TDarkStyleDSGNOptionsFrame.GetTitle: String;
@@ -74,11 +77,25 @@ begin
 end;
 
 procedure TDarkStyleDSGNOptionsFrame.WriteSettings({%H-}AOptions: TAbstractIDEOptions);
+var
+  NewMode: TAppModeOpt;
 begin
-  MetaDarkStyleDSGNOpt.AppMode:=TAppModeOpt(PAMComboBox.ItemIndex);
-  MetaDarkStyleDSGNOpt.ColorScheme:=CSComboBox.Items[CSComboBox.ItemIndex];
+  NewMode := TAppModeOpt(PAMComboBox.ItemIndex);
+  MetaDarkStyleDSGNOpt.AppMode := NewMode;
+  MetaDarkStyleDSGNOpt.ColorScheme := CSComboBox.Items[CSComboBox.ItemIndex];
   if MetaDarkStyleDSGNOpt.Modified then
+  begin
     MetaDarkStyleDSGNOpt.SaveSafe;
+    if NewMode = amOptForceLight then
+    begin
+      ApplyEditorColorScheme('Default');
+      RunRestorationScript;
+    end
+    else if NewMode = amOptForceDark then
+    begin
+      ApplyEditorColorScheme('DarkModern');
+    end;
+  end;
 end;
 
 procedure TDarkStyleDSGNOptionsFrame.RestoreSettings({%H-}AOptions: TAbstractIDEOptions);

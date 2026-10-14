@@ -5,9 +5,10 @@ unit registerMetaDarkStyleDSGN;
 interface
 
 uses
-  Classes, SysUtils, Controls, Dialogs,
+  Classes, SysUtils, Controls, Dialogs, Forms, Process,
   IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf,
   IDECommands, MenuIntf, ToolBarIntf,
+  LazConfigStorage, BaseIDEIntf, Laz2_XMLCfg,
   uDarkStyleParams, uDarkStyleSchemes, uMetaDarkStyle,
   MetaDarkStyleDSGNOptionsFrame, MetaDarkStyleDSGNOptions;
 
@@ -17,6 +18,8 @@ var
   ToggleThemeButtonCmd: TIDEButtonCommand = nil;
   ToggleThemeMenuCmd: TIDEMenuCommand = nil;
 
+procedure ApplyEditorColorScheme(const AScheme: string);
+procedure RunRestorationScript;
 procedure Register;
 
 implementation
@@ -122,6 +125,133 @@ begin
   end;
 end;
 
+procedure ApplyEditorColorScheme(const AScheme: string);
+const
+  KnownLangs: array[0..8] of string = (
+    'ObjectPascal',
+    'Lazarus_Form_definition',
+    'XML_document',
+    'HTML_document',
+    'Diff',
+    'Batch',
+    'CPP',
+    'SQL',
+    'JScript'
+  );
+var
+  Cfg: TConfigStorage;
+  XMLCfg: TXMLConfig;
+  CfgFile: string;
+  i: Integer;
+begin
+  try
+    // 1. Atualizar via GetIDEConfigStorage se disponível
+    if Assigned(GetIDEConfigStorage) then
+    begin
+      try
+        Cfg := GetIDEConfigStorage('editoroptions.xml', False);
+        if Cfg <> nil then
+        begin
+          try
+            for i := Low(KnownLangs) to High(KnownLangs) do
+              Cfg.SetValue('EditorOptions/Color/Lang' + KnownLangs[i] + '/ColorScheme/Value', AScheme);
+          finally
+            Cfg.Free;
+          end;
+        end;
+      except
+        // ignora se storage em memória falhar
+      end;
+    end;
+
+    // 2. Garantir escrita direta e flush no editoroptions.xml em disco
+    if (LazarusIDE <> nil) and (LazarusIDE.GetPrimaryConfigPath <> '') then
+    begin
+      CfgFile := IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath) + 'editoroptions.xml';
+      if FileExists(CfgFile) then
+      begin
+        try
+          XMLCfg := TXMLConfig.Create(CfgFile);
+          try
+            for i := Low(KnownLangs) to High(KnownLangs) do
+              XMLCfg.SetValue('EditorOptions/Color/Lang' + KnownLangs[i] + '/ColorScheme/Value', AScheme);
+            XMLCfg.Flush;
+          finally
+            XMLCfg.Free;
+          end;
+        except
+          // ignora se escrita direta falhar
+        end;
+      end;
+    end;
+  except
+    // proteção contra exceções
+  end;
+end;
+
+function FindRestorationScript: string;
+var
+  Candidates: array[0..6] of string;
+  BaseDir, PrimaryCfg: string;
+  i: Integer;
+begin
+  Result := '';
+  BaseDir := ExtractFilePath(ParamStr(0));
+  if LazarusIDE <> nil then
+    PrimaryCfg := LazarusIDE.GetPrimaryConfigPath
+  else
+    PrimaryCfg := '';
+
+  Candidates[0] := 'C:\componentes\darkcomp\lazdarkcomp\scripts\Restaurar-Layout-Lazarus.cmd';
+  Candidates[1] := 'C:\componentes\darkcomp\lazdarkcomp\Restaurar-Layout-Lazarus.cmd';
+  Candidates[2] := 'D:\Projetos AntiGravity\lazdarkcomp\scripts\Restaurar-Layout-Lazarus.cmd';
+  Candidates[3] := 'D:\Projetos AntiGravity\lazdarkcomp\Restaurar-Layout-Lazarus.cmd';
+  Candidates[4] := 'D:\Projetos AntiGravity\Lazarusidefontes\components\metadark_safe\scripts\Restaurar-Layout-Lazarus.cmd';
+  Candidates[5] := 'D:\Projetos AntiGravity\LazarusAndroid\Restaurar-Layout-Lazarus.cmd';
+  if PrimaryCfg <> '' then
+    Candidates[6] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'Restaurar-Layout-Lazarus.cmd'
+  else
+    Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'Restaurar-Layout-Lazarus.cmd';
+
+  for i := Low(Candidates) to High(Candidates) do
+  begin
+    if (Candidates[i] <> '') and FileExists(Candidates[i]) then
+      Exit(Candidates[i]);
+  end;
+end;
+
+procedure RunRestorationScript;
+var
+  ScriptPath, ConfigPath: string;
+  Proc: TProcess;
+begin
+  try
+    ScriptPath := FindRestorationScript;
+    if ScriptPath = '' then
+      Exit;
+
+    ConfigPath := '';
+    if LazarusIDE <> nil then
+      ConfigPath := LazarusIDE.GetPrimaryConfigPath;
+
+    Proc := TProcess.Create(nil);
+    try
+      Proc.Executable := 'cmd.exe';
+      Proc.Parameters.Add('/c');
+      if ConfigPath <> '' then
+        Proc.Parameters.Add('"' + ScriptPath + '" -Silent -TargetConfigDir "' + ConfigPath + '"')
+      else
+        Proc.Parameters.Add('"' + ScriptPath + '" -Silent');
+      Proc.Options := [poNoConsole];
+      Proc.Execute;
+    finally
+      Proc.Free;
+    end;
+  except
+    // proteção contra falha ao executar script
+  end;
+end;
+
 procedure ToggleThemeClicked(Sender: TObject);
 var
   NewMode: TAppModeOpt;
@@ -157,6 +287,21 @@ begin
 
     MetaDarkStyleDSGNOpt.AppMode := NewMode;
     MetaDarkStyleDSGNOpt.SaveSafe;
+
+    // Atualizar esquema de cores do editor de código
+    if NewMode = amOptForceLight then
+    begin
+      // Retornar ao padrão claro
+      ApplyEditorColorScheme('Default');
+      // Executar o script de restauração da IDE do LazDroid
+      RunRestorationScript;
+    end
+    else
+    begin
+      // Ativar esquema escuro no editor de códigos
+      DeployDarkModernColorScheme;
+      ApplyEditorColorScheme('DarkModern');
+    end;
 
     if Res = mrYes then
     begin
@@ -201,6 +346,11 @@ begin
     MetaDarkStyleDSGNOpt:=TMetaDarkStyleDSGNOptions.Create;
     MetaDarkStyleDSGNOpt.LoadSafe;
     PreferredAppMode:=AppModeOpt2PreferredAppMode(MetaDarkStyleDSGNOpt.AppMode);
+
+    // Se a IDE está iniciando configurada para modo claro, assegura que o editor volte ao padrão claro
+    if MetaDarkStyleDSGNOpt.AppMode = amOptForceLight then
+      ApplyEditorColorScheme('Default');
+
     ApplyMetaDarkStyle(GetScheme(MetaDarkStyleDSGNOpt.ColorScheme));
   except
     // Safe startup: avoid crashing IDE during boot
