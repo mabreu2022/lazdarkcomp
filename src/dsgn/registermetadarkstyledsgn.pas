@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Controls, Dialogs,
-  IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf, lazconf,
+  IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf,
   IDECommands, MenuIntf, ToolBarIntf,
   uDarkStyleParams, uDarkStyleSchemes, uMetaDarkStyle,
   MetaDarkStyleDSGNOptionsFrame, MetaDarkStyleDSGNOptions;
@@ -94,7 +94,7 @@ var
   SL: TStringList;
 begin
   try
-    SchemeDir := IncludeTrailingPathDelimiter(GetPrimaryConfigPath) + 'userschemes';
+    SchemeDir := IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath) + 'userschemes';
     if not DirectoryExists(SchemeDir) then
       ForceDirectories(SchemeDir);
     SchemeFile := IncludeTrailingPathDelimiter(SchemeDir) + 'DarkModern.xml';
@@ -127,7 +127,8 @@ var
   NewMode: TAppModeOpt;
   Msg, NewThemeName: string;
   Res: Integer;
-  RestartCmd: TIDECommand;
+  RestartDone: Boolean;
+  RestartItem: TIDEMenuItem;
 begin
   try
     if MetaDarkStyleDSGNOpt = nil then
@@ -159,9 +160,29 @@ begin
 
     if Res = mrYes then
     begin
-      RestartCmd := IDECommandList.FindIDECommand(ecRestart);
-      if RestartCmd <> nil then
-        RestartCmd.Execute(nil);
+      RestartDone := False;
+      try
+        RestartDone := ExecuteIDECommand(nil, ecRestart);
+      except
+        RestartDone := False;
+      end;
+
+      if not RestartDone then
+      begin
+        try
+          if itmFileIDEStart <> nil then
+          begin
+            RestartItem := itmFileIDEStart.FindByName('itmFileRestart');
+            if (RestartItem is TIDEMenuCommand) and Assigned(TIDEMenuCommand(RestartItem).OnClick) then
+            begin
+              TIDEMenuCommand(RestartItem).OnClick(RestartItem);
+              RestartDone := True;
+            end;
+          end;
+        except
+          RestartDone := False;
+        end;
+      end;
     end;
   except
     on E: Exception do
@@ -175,8 +196,8 @@ begin
   try
     DeployDarkModernColorScheme;
     LoadLResources;
-    LoadPath(GetPrimaryConfigPath+'/userschemes','*.'+DSColorsTypeName);
-    LoadPath(GetSecondaryConfigPath+'/userschemes','*.'+DSColorsTypeName);
+    LoadPath(LazarusIDE.GetPrimaryConfigPath+'/userschemes','*.'+DSColorsTypeName);
+    LoadPath(LazarusIDE.GetSecondaryConfigPath+'/userschemes','*.'+DSColorsTypeName);
     MetaDarkStyleDSGNOpt:=TMetaDarkStyleDSGNOptions.Create;
     MetaDarkStyleDSGNOpt.LoadSafe;
     PreferredAppMode:=AppModeOpt2PreferredAppMode(MetaDarkStyleDSGNOpt.AppMode);
