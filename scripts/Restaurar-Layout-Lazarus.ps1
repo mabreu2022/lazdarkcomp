@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-    Script de Restauracao e Organizacao do Layout Docado da IDE do Lazarus.
+    Script de Restauração e Organização do Layout Docado da IDE do Lazarus.
 .DESCRIPTION
-    Reorganiza as janelas docadas do Lazarus (AnchorDocking + DockedFormEditor):
+    Localiza automaticamente a instalação e o perfil de configuração do Lazarus,
+    varrendo todas as unidades e diretórios do usuário, e reorganiza o layout docado:
       - Lado Esquerdo: Inspetor de Objetos (Componentes, Propriedades e Eventos).
-      - Centro Superior: Editor de Codigo e Designer de Formularios.
+      - Centro Superior: Editor de Código e Designer de Formulários.
       - Centro Inferior: Mensagens, Busca, Watches, Pontos de Parada e Assembler (Abas).
       - Lado Direito Superior: Inspetor de Projeto (Arquivos).
-      - Lado Direito Meio: LazDroid Target Form.
-      - Lado Direito Inferior: Explorador de Codigo e Lista de Componentes (Abas).
+      - Lado Direito Inferior: Explorador de Código e Lista de Componentes (Abas).
 #>
 param(
     [switch]$Silent = $false,
@@ -16,17 +16,36 @@ param(
 )
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 if (-not $Silent) {
-    $Host.UI.RawUI.WindowTitle = "Restaurador de Layout do Lazarus"
+    try { $Host.UI.RawUI.WindowTitle = "Restaurador de Layout do Lazarus" } catch {}
     Write-Host "=======================================================================" -ForegroundColor Cyan
     Write-Host "           Restaurador de Layout Docado - Lazarus IDE                  " -ForegroundColor Cyan
     Write-Host "=======================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
 
-# 1. Verificar se o Lazarus esta em execucao
+# -----------------------------------------------------------------------------
+# 1. Verificar se o Lazarus está em execução e obter dados do processo
+# -----------------------------------------------------------------------------
 $lazProc = Get-Process -Name "lazarus", "startlazarus" -ErrorAction SilentlyContinue
+$runningLazExe = $null
+$runningLazPcp = $null
+
 if ($lazProc) {
+    try {
+        $firstProc = $lazProc | Select-Object -First 1
+        $runningLazExe = $firstProc.Path
+        $procId = $firstProc.Id
+        $wmiProc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
+        if ($wmiProc -and $wmiProc.CommandLine) {
+            if ($wmiProc.CommandLine -match '(?i)--(?:primary-config-path|pcp)=["'']?([^"'']+)["'']?') {
+                $runningLazPcp = $matches[1].Trim()
+            }
+        }
+    } catch {}
+
     if (-not $Silent) {
         Write-Host "[!] O Lazarus está em execução no momento." -ForegroundColor Yellow
         Write-Host "    Para que as configurações não sejam sobrescritas ao sair, o Lazarus precisa ser fechado."
@@ -40,38 +59,273 @@ if ($lazProc) {
             return
         }
     } else {
-        # No modo silencioso (disparado pela IDE antes de reiniciar), aguarda o processo
-        # atual do Lazarus encerrar completamente para nao ter sua gravacao de saida sobrescrevendo os arquivos
         $lazProc | Wait-Process -Timeout 15 -ErrorAction SilentlyContinue
         Start-Sleep -Milliseconds 600
     }
 }
 
-# 2. Localizar pasta de configuracao do Lazarus
-if ($TargetConfigDir -and (Test-Path $TargetConfigDir)) {
-    $configDir = $TargetConfigDir
-} else {
-    $configDir = "$env:LOCALAPPDATA\lazarus"
-    if (-not (Test-Path "$configDir\environmentoptions.xml")) {
-        $configDir = "$env:APPDATA\lazarus"
+# -----------------------------------------------------------------------------
+# 2. Localizar pasta onde o componente foi instalado/extraído
+# -----------------------------------------------------------------------------
+$detectedComponentDir = $null
+$compCandidates = @(
+    $PSScriptRoot,
+    (Split-Path $PSScriptRoot -Parent),
+    "$env:USERPROFILE\Documents\ComponentesLazarus\lazdarkcomp",
+    "$env:USERPROFILE\Documents\lazdarkcomp",
+    "$env:USERPROFILE\Documents\metadark_safe"
+)
+
+$fileSystemDrives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue
+
+foreach ($d in $fileSystemDrives) {
+    $r = $d.Root
+    $compCandidates += "$r\ComponentesLazarus\lazdarkcomp"
+    $compCandidates += "$r\Componentes\lazdarkcomp"
+    $compCandidates += "$r\lazdarkcomp"
+    $compCandidates += "$r\Users\*\Documents\ComponentesLazarus\lazdarkcomp"
+}
+
+foreach ($cand in $compCandidates) {
+    if ($cand -and (Test-Path $cand)) {
+        try {
+            $resolved = (Resolve-Path $cand -ErrorAction SilentlyContinue | Select-Object -First 1).Path
+            $hasLpk1 = Test-Path (Join-Path $resolved "metadarkstyledsgn.lpk")
+            $hasLpk2 = Test-Path (Join-Path $resolved "metadarkstyle.lpk")
+            $hasScript = Test-Path (Join-Path $resolved "scripts\Restaurar-Layout-Lazarus.ps1")
+            if ($hasLpk1 -or $hasLpk2 -or $hasScript) {
+                $detectedComponentDir = $resolved
+                break
+            }
+        } catch {}
     }
 }
 
-if (-not (Test-Path "$configDir\environmentoptions.xml")) {
-    if (-not $Silent) {
-        Write-Host "[-] Não foi possível localizar o diretório de configurações do Lazarus em:" -ForegroundColor Red
-        Write-Host "    $env:LOCALAPPDATA\lazarus nem $env:APPDATA\lazarus"
-    }
-    return
-}
-
-if (-not $Silent) {
-    Write-Host "[*] Diretório de configurações encontrado:" -ForegroundColor Gray
-    Write-Host "    $configDir" -ForegroundColor White
+if ($detectedComponentDir -and (-not $Silent)) {
+    Write-Host "[*] Pasta do componente identificada em:" -ForegroundColor Gray
+    Write-Host "    $detectedComponentDir" -ForegroundColor DarkCyan
     Write-Host ""
 }
 
-# 3. Fazer backup antes de alterar
+# -----------------------------------------------------------------------------
+# 3. Localizar instalações e perfis de configuração do Lazarus (Varredura Ampla)
+# -----------------------------------------------------------------------------
+$candidateConfigs = [System.Collections.Generic.List[PSObject]]::new()
+
+function Add-ConfigCandidate([string]$path, [int]$baseScore, [string]$source) {
+    if (-not $path) { return }
+    $p = $path.Trim(' "''')
+    if (-not (Test-Path $p)) { return }
+    try {
+        $fullPath = (Resolve-Path $p -ErrorAction SilentlyContinue).Path
+    } catch {
+        $fullPath = $p
+    }
+    if (-not $fullPath) { return }
+
+    $existing = $candidateConfigs | Where-Object { $_.Path.TrimEnd('\') -ieq $fullPath.TrimEnd('\') }
+    if ($existing) {
+        $existing.Score += $baseScore
+        $existing.Reasons += ", $source"
+        return
+    }
+
+    $hasEnvOpts = Test-Path (Join-Path $fullPath "environmentoptions.xml")
+    $hasPkgFiles = Test-Path (Join-Path $fullPath "packagefiles.xml")
+    $hasAnchorDock = Test-Path (Join-Path $fullPath "anchordocklayout.xml")
+
+    $score = $baseScore
+    if ($hasEnvOpts) { $score += 500 }
+    if ($hasAnchorDock) { $score += 150 }
+    if ($hasPkgFiles) {
+        $score += 200
+        try {
+            $pkgContent = Get-Content (Join-Path $fullPath "packagefiles.xml") -Raw -ErrorAction SilentlyContinue
+            if ($pkgContent -match '(?i)lazdarkcomp|metadarkstyle|metadarkstyledsgn') {
+                $score += 1500 # Match perfeito com registro do componente
+            }
+            if ($detectedComponentDir -and ($pkgContent -like "*$detectedComponentDir*")) {
+                $score += 2000 # Match absoluto: caminho exato do componente instalado
+            }
+        } catch {}
+    }
+
+    $candidateConfigs.Add([PSCustomObject]@{
+        Path = $fullPath
+        Score = $score
+        Reasons = $source
+        HasEnvOpts = $hasEnvOpts
+        HasPkgFiles = $hasPkgFiles
+        HasAnchorDock = $hasAnchorDock
+    })
+}
+
+# A. Parâmetro explícito TargetConfigDir
+if ($TargetConfigDir -and (Test-Path $TargetConfigDir)) {
+    Add-ConfigCandidate $TargetConfigDir 10000 "Parâmetro explícito TargetConfigDir"
+}
+
+# B. Processo Lazarus que estava em execução
+if ($runningLazPcp) {
+    Add-ConfigCandidate $runningLazPcp 3000 "Argumento --pcp do processo Lazarus"
+}
+if ($runningLazExe) {
+    $procDir = Split-Path $runningLazExe -Parent
+    Add-ConfigCandidate "$procDir\config" 2000 "Subpasta config do executável em execução"
+    Add-ConfigCandidate $procDir 1500 "Pasta raiz do executável em execução"
+    $cfgFile = Join-Path $procDir "lazarus.cfg"
+    if (Test-Path $cfgFile) {
+        try {
+            Get-Content $cfgFile -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_ -match '(?i)--(?:primary-config-path|pcp)=["'']?([^"'']+)["'']?') {
+                    $rawPcp = $matches[1].Trim()
+                    if (-not [System.IO.Path]::IsPathRooted($rawPcp)) { $rawPcp = Join-Path $procDir $rawPcp }
+                    Add-ConfigCandidate $rawPcp 2800 "Arquivo lazarus.cfg do executável em execução"
+                }
+            }
+        } catch {}
+    }
+}
+
+# C. Registro do Windows
+$regKeys = @(
+    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+    "HKCU:\Software\Lazarus"
+)
+foreach ($rk in $regKeys) {
+    try {
+        Get-ItemProperty $rk -ErrorAction SilentlyContinue | Where-Object { 
+            ($_.DisplayName -like "*Lazarus*") -or ($_.PSChildName -like "*Lazarus*") 
+        } | ForEach-Object {
+            $instDir = $_.InstallLocation
+            if (-not $instDir -and $_.UninstallString) {
+                $instDir = Split-Path ($_.UninstallString.Trim('"')) -Parent
+            }
+            if ($instDir -and (Test-Path $instDir)) {
+                Add-ConfigCandidate "$instDir\config" 1200 "Registro do Windows (config)"
+                Add-ConfigCandidate $instDir 1000 "Registro do Windows (raiz)"
+                $cfg = Join-Path $instDir "lazarus.cfg"
+                if (Test-Path $cfg) {
+                    Get-Content $cfg -ErrorAction SilentlyContinue | ForEach-Object {
+                        if ($_ -match '(?i)--(?:primary-config-path|pcp)=["'']?([^"'']+)["'']?') {
+                            $r = $matches[1].Trim()
+                            if (-not [System.IO.Path]::IsPathRooted($r)) { $r = Join-Path $instDir $r }
+                            Add-ConfigCandidate $r 2600 "Arquivo lazarus.cfg do Registro"
+                        }
+                    }
+                }
+            }
+        }
+    } catch {}
+}
+
+# D. Perfis padrão do usuário atual
+Add-ConfigCandidate "$env:LOCALAPPDATA\lazarus" 600 "LocalAppData padrão (%LOCALAPPDATA%\lazarus)"
+Add-ConfigCandidate "$env:APPDATA\lazarus" 400 "Roaming padrão (%APPDATA%\lazarus)"
+Add-ConfigCandidate "$env:USERPROFILE\.lazarus" 300 "Perfil Unix/WSL padrão (~/.lazarus)"
+
+# E. Varrer Unidades do Sistema (C:, D:, E:, etc.)
+foreach ($d in $fileSystemDrives) {
+    $root = $d.Root
+    $standardLaz = @(
+        "$root\lazarus",
+        "$root\lazarus32",
+        "$root\lazarus64",
+        "$root\Program Files\lazarus",
+        "$root\Program Files (x86)\lazarus"
+    )
+    foreach ($lp in $standardLaz) {
+        if (Test-Path $lp) {
+            $cfg = Join-Path $lp "lazarus.cfg"
+            if (Test-Path $cfg) {
+                try {
+                    Get-Content $cfg -ErrorAction SilentlyContinue | ForEach-Object {
+                        if ($_ -match '(?i)--(?:primary-config-path|pcp)=["'']?([^"'']+)["'']?') {
+                            $r = $matches[1].Trim()
+                            if (-not [System.IO.Path]::IsPathRooted($r)) { $r = Join-Path $lp $r }
+                            Add-ConfigCandidate $r 2500 "Configuração em $cfg"
+                        }
+                    }
+                } catch {}
+            }
+            Add-ConfigCandidate "$lp\config" 1100 "Subpasta config em $lp"
+            Add-ConfigCandidate $lp 800 "Pasta de instalação em $lp"
+        }
+    }
+
+    # Verificar pastas de outros usuários na unidade
+    $usersDir = Join-Path $root "Users"
+    if (Test-Path $usersDir) {
+        Get-ChildItem -Path $usersDir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+            $uDir = $_.FullName
+            Add-ConfigCandidate "$uDir\AppData\Local\lazarus" 500 "Perfil de usuário em $uDir"
+            Add-ConfigCandidate "$uDir\AppData\Roaming\lazarus" 400 "Perfil roaming em $uDir"
+            Add-ConfigCandidate "$uDir\.lazarus" 300 "Pasta .lazarus em $uDir"
+        }
+    }
+}
+
+# F. Varredura recursiva rápida se nenhum candidato com environmentoptions.xml foi achado
+$confirmed = $candidateConfigs | Where-Object { $_.HasEnvOpts -or $_.HasAnchorDock }
+if ($confirmed.Count -eq 0) {
+    if (-not $Silent) {
+        Write-Host "[*] Realizando busca detalhada nas unidades por configurações do Lazarus..." -ForegroundColor DarkYellow
+    }
+    foreach ($d in $fileSystemDrives) {
+        try {
+            Get-ChildItem -Path $d.Root -Filter "environmentoptions.xml" -Recurse -Depth 3 -ErrorAction SilentlyContinue | ForEach-Object {
+                $pDir = Split-Path $_.FullName -Parent
+                if ($pDir -notmatch '(?i)tools\\install') {
+                    Add-ConfigCandidate $pDir 750 "Busca automática na unidade $($d.Root)"
+                }
+            }
+        } catch {}
+    }
+}
+
+# -----------------------------------------------------------------------------
+# 4. Selecionar o melhor diretório de configurações
+# -----------------------------------------------------------------------------
+$sortedCandidates = $candidateConfigs | Where-Object { Test-Path $_.Path } | Sort-Object Score -Descending
+
+$configDir = $null
+if ($sortedCandidates.Count -gt 0) {
+    $configDir = $sortedCandidates[0].Path
+}
+
+if (-not $configDir) {
+    if (-not $Silent) {
+        Write-Host "[-] Não foi possível localizar automaticamente o diretório de configurações do Lazarus." -ForegroundColor Red
+        Write-Host ""
+        $userPath = Read-Host "Por favor, digite o caminho da pasta do Lazarus (ex: C:\lazarus) ou de suas configurações"
+        if ($userPath -and (Test-Path $userPath)) {
+            if (Test-Path (Join-Path $userPath "config")) {
+                $configDir = (Resolve-Path (Join-Path $userPath "config")).Path
+            } else {
+                $configDir = (Resolve-Path $userPath).Path
+            }
+        } else {
+            Write-Host "[-] Caminho informado não é válido. Operação encerrada." -ForegroundColor Red
+            return
+        }
+    } else {
+        return
+    }
+}
+
+if (-not $Silent) {
+    Write-Host "[*] Diretório de configurações do Lazarus selecionado:" -ForegroundColor Gray
+    Write-Host "    $configDir" -ForegroundColor White
+    if ($sortedCandidates.Count -gt 0) {
+        Write-Host "    (Motivo: $($sortedCandidates[0].Reasons))" -ForegroundColor DarkGray
+    }
+    Write-Host ""
+}
+
+# -----------------------------------------------------------------------------
+# 5. Criar backup preventivo antes de qualquer alteração
+# -----------------------------------------------------------------------------
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $backupDir = Join-Path $configDir "backup_layout_$timestamp"
 New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
@@ -82,7 +336,9 @@ if (-not $Silent) {
     Write-Host ""
 }
 
-# 4. XML da estrutura docada padrao perfeita (Layout Delphi estavel e aninhado com conteineres)
+# -----------------------------------------------------------------------------
+# 6. XML da estrutura docada padrão perfeita (Layout estável e aninhado)
+# -----------------------------------------------------------------------------
 $dockInnerXml = @"
   <Version Value="1" />
   <MainConfig>
@@ -186,7 +442,9 @@ $dockInnerXml
 </AnchorDocking>
 "@
 
-# 5. Garantir opcoes de ativacao do AnchorDocking e DockedFormEditor
+# -----------------------------------------------------------------------------
+# 7. Garantir opções de ativação do AnchorDocking e DockedFormEditor
+# -----------------------------------------------------------------------------
 $anchorOptPath = Join-Path $configDir "anchordockingoptions.xml"
 if (Test-Path $anchorOptPath) {
     Set-ItemProperty -Path $anchorOptPath -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
@@ -213,7 +471,9 @@ $dockedFormOptXml = @"
 "@
 [System.IO.File]::WriteAllText($dockedFormOptPath, $dockedFormOptXml, [System.Text.Encoding]::UTF8)
 
-# 6. Atualizar anchordocklayout.xml garantindo permissao normal de gravacao
+# -----------------------------------------------------------------------------
+# 8. Atualizar anchordocklayout.xml garantindo permissão normal de gravação
+# -----------------------------------------------------------------------------
 $layoutFilePath = Join-Path $configDir "anchordocklayout.xml"
 if (Test-Path $layoutFilePath) {
     Set-ItemProperty -Path $layoutFilePath -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue
@@ -224,7 +484,9 @@ if (-not $Silent) {
     Write-Host "[+] Arquivo 'anchordocklayout.xml' gerado com layout limpo e padronizado." -ForegroundColor Green
 }
 
-# 7. Atualizar environmentoptions.xml corrigindo Desktop e CustomPosition
+# -----------------------------------------------------------------------------
+# 9. Atualizar environmentoptions.xml corrigindo Desktop e CustomPosition
+# -----------------------------------------------------------------------------
 $envOptPath = Join-Path $configDir "environmentoptions.xml"
 if (Test-Path $envOptPath) {
     try {
@@ -268,7 +530,7 @@ if (Test-Path $envOptPath) {
                         $vis.SetAttribute("Value", "True")
                     }
 
-                    # Ajustar posicoes individuais para nao conflitar com AnchorDocking
+                    # Ajustar posições individuais para não conflitar com AnchorDocking
                     $posMap = @{
                         "SourceNotebook"      = @{ Left = "329";  Top = "100"; Width = "1223"; Height = "620" }
                         "MessagesView"        = @{ Left = "329";  Top = "725"; Width = "1223"; Height = "241" }
@@ -324,7 +586,7 @@ if (Test-Path $envOptPath) {
         $settings = New-Object System.Xml.XmlWriterSettings
         $settings.Indent = $true
         $settings.IndentChars = "  "
-        $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
+        $settings.Encoding = [System.Text.Encoding]::UTF8
         $writer = [System.Xml.XmlWriter]::Create($envOptPath, $settings)
         $envDoc.Save($writer)
         $writer.Dispose()
@@ -340,6 +602,25 @@ if (Test-Path $envOptPath) {
     }
 }
 
+# -----------------------------------------------------------------------------
+# 10. Replicar scripts na pasta de configuração para fácil acesso futuro
+# -----------------------------------------------------------------------------
+try {
+    $cfgScripts = Join-Path $configDir "scripts"
+    New-Item -ItemType Directory -Path $cfgScripts -Force -ErrorAction SilentlyContinue | Out-Null
+    if (Test-Path "$PSScriptRoot\Restaurar-Layout-Lazarus.cmd") {
+        Copy-Item "$PSScriptRoot\Restaurar-Layout-Lazarus.cmd" -Destination $configDir -Force -ErrorAction SilentlyContinue
+        Copy-Item "$PSScriptRoot\Restaurar-Layout-Lazarus.cmd" -Destination $cfgScripts -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path "$PSCommandPath") {
+        Copy-Item "$PSCommandPath" -Destination $configDir -Force -ErrorAction SilentlyContinue
+        Copy-Item "$PSCommandPath" -Destination $cfgScripts -Force -ErrorAction SilentlyContinue
+    }
+} catch {}
+
+# -----------------------------------------------------------------------------
+# 11. Conclusão e opção para abrir o Lazarus
+# -----------------------------------------------------------------------------
 if (-not $Silent) {
     Write-Host ""
     Write-Host "=======================================================================" -ForegroundColor Green
@@ -354,20 +635,40 @@ if (-not $Silent) {
     Write-Host ""
 
     $lazarusExe = ""
-    $cmd = Get-Command "lazarus.exe" -ErrorAction SilentlyContinue
-    if ($cmd) {
-        $lazarusExe = $cmd.Source
-    } elseif (Test-Path "C:\lazarus\lazarus.exe") {
-        $lazarusExe = "C:\lazarus\lazarus.exe"
-    } elseif (Test-Path "D:\lazarus\lazarus.exe") {
-        $lazarusExe = "D:\lazarus\lazarus.exe"
+    if ($runningLazExe -and (Test-Path $runningLazExe)) {
+        $lazarusExe = $runningLazExe
+    } else {
+        $searchExe = @(
+            "C:\lazarus\lazarus.exe",
+            "D:\lazarus\lazarus.exe"
+        )
+        foreach ($d in $fileSystemDrives) {
+            $searchExe += "$($d.Root)lazarus\lazarus.exe"
+            $searchExe += "$($d.Root)Program Files\lazarus\lazarus.exe"
+        }
+        foreach ($se in $searchExe) {
+            if (Test-Path $se) {
+                $lazarusExe = $se
+                break
+            }
+        }
+        if (-not $lazarusExe) {
+            $cmd = Get-Command "lazarus.exe" -ErrorAction SilentlyContinue
+            if ($cmd) { $lazarusExe = $cmd.Source }
+        }
     }
 
     if (Test-Path $lazarusExe) {
         $abrir = Read-Host "Deseja abrir o Lazarus agora? (S/N)"
         if ($abrir -match "^[sSyY]") {
-            Write-Host "[*] Iniciando o Lazarus..." -ForegroundColor Green
-            Start-Process $lazarusExe
+            Write-Host "[*] Iniciando o Lazarus em $lazarusExe..." -ForegroundColor Green
+            # Se a configuração usada for diferente do padrão AppData, passa o parâmetro --pcp
+            $defaultPcp = "$env:LOCALAPPDATA\lazarus"
+            if ($configDir.TrimEnd('\') -ine $defaultPcp.TrimEnd('\')) {
+                Start-Process $lazarusExe -ArgumentList "--pcp=`"$configDir`""
+            } else {
+                Start-Process $lazarusExe
+            }
         }
     }
 }

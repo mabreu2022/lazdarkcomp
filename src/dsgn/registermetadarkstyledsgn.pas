@@ -283,12 +283,50 @@ begin
   end;
 end;
 
+procedure SimpleCopyFileSafe(const Src, Dst: string);
+var
+  FSIn, FSOut: TFileStream;
+begin
+  try
+    if not FileExists(Src) then Exit;
+    ForceDirectories(ExtractFilePath(Dst));
+    FSIn := TFileStream.Create(Src, fmOpenRead or fmShareDenyNone);
+    try
+      FSOut := TFileStream.Create(Dst, fmCreate);
+      try
+        FSOut.CopyFrom(FSIn, FSIn.Size);
+      finally
+        FSOut.Free;
+      end;
+    finally
+      FSIn.Free;
+    end;
+  except
+  end;
+end;
+
 function FindRestorationScript: string;
 var
   Pkg: TIDEPackage;
-  PkgDir, BaseDir, PrimaryCfg: string;
-  Candidates: array[0..7] of string;
-  i: Integer;
+  PkgDir, BaseDir, PrimaryCfg, UserProf, PkgFilesXml, LineStr: string;
+  Candidates: array of string;
+  i, PosVal: Integer;
+  SL: TStringList;
+  DriveChar: Char;
+
+  procedure AddCandidate(const APath: string);
+  var
+    Len: Integer;
+  begin
+    if APath = '' then Exit;
+    Len := Length(Candidates);
+    SetLength(Candidates, Len + 4);
+    Candidates[Len]   := IncludeTrailingPathDelimiter(APath) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[Len+1] := IncludeTrailingPathDelimiter(APath) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[Len+2] := IncludeTrailingPathDelimiter(APath) + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[Len+3] := IncludeTrailingPathDelimiter(APath) + 'Restaurar-Layout-Lazarus.cmd';
+  end;
+
 begin
   Result := '';
   BaseDir := ExtractFilePath(ParamStr(0));
@@ -297,6 +335,9 @@ begin
   else
     PrimaryCfg := '';
 
+  SetLength(Candidates, 0);
+
+  // 1. Tenta obter o diretório via pacote carregado
   PkgDir := '';
   if Assigned(PackageEditingInterface) then
   begin
@@ -305,39 +346,93 @@ begin
       Pkg := PackageEditingInterface.FindPackageWithName('metadarkstyle');
     if Pkg = nil then
       Pkg := PackageEditingInterface.FindPackageWithName('lazdarkcomp');
+    if Pkg = nil then
+      Pkg := PackageEditingInterface.FindPackageWithName('metadarkstyledsgn226');
+
+    if (Pkg = nil) and (PackageEditingInterface.GetPackageCount > 0) then
+    begin
+      for i := 0 to PackageEditingInterface.GetPackageCount - 1 do
+      begin
+        Pkg := PackageEditingInterface.GetPackages(i);
+        if (Pkg <> nil) and ((Pos('metadark', LowerCase(Pkg.Name)) > 0) or (Pos('lazdark', LowerCase(Pkg.Name)) > 0)) then
+          Break;
+      end;
+    end;
+
     if Pkg <> nil then
       PkgDir := Pkg.DirectoryExpanded;
   end;
 
+  // 2. Se não encontrou o pacote em memória, consulta o packagefiles.xml no perfil da IDE
+  if (PkgDir = '') and (PrimaryCfg <> '') then
+  begin
+    PkgFilesXml := IncludeTrailingPathDelimiter(PrimaryCfg) + 'packagefiles.xml';
+    if FileExists(PkgFilesXml) then
+    begin
+      SL := TStringList.Create;
+      try
+        SL.LoadFromFile(PkgFilesXml);
+        for i := 0 to SL.Count - 1 do
+        begin
+          LineStr := SL[i];
+          if (Pos('Value="', LineStr) > 0) and 
+             ((Pos('lazdarkcomp', LowerCase(LineStr)) > 0) or (Pos('metadark', LowerCase(LineStr)) > 0)) and 
+             (Pos('.lpk"', LowerCase(LineStr)) > 0) then
+          begin
+            PosVal := Pos('Value="', LineStr) + 7;
+            LineStr := Copy(LineStr, PosVal, Length(LineStr));
+            PosVal := Pos('"', LineStr);
+            if PosVal > 0 then
+              LineStr := Copy(LineStr, 1, PosVal - 1);
+            if FileExists(LineStr) then
+            begin
+              PkgDir := ExtractFilePath(LineStr);
+              Break;
+            end;
+          end;
+        end;
+      finally
+        SL.Free;
+      end;
+    end;
+  end;
+
+  // 3. Adiciona candidatos da pasta do componente encontrada
   if PkgDir <> '' then
-  begin
-    Candidates[0] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
-    Candidates[1] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
-    Candidates[2] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.ps1';
-    Candidates[3] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.cmd';
-  end
-  else
-  begin
-    Candidates[0] := '';
-    Candidates[1] := '';
-    Candidates[2] := '';
-    Candidates[3] := '';
-  end;
+    AddCandidate(PkgDir);
 
+  // 4. Adiciona candidatos do perfil de configuração do Lazarus
   if PrimaryCfg <> '' then
+    AddCandidate(PrimaryCfg);
+
+  // 5. Adiciona candidatos da pasta base da IDE (ex: C:\lazarus)
+  if BaseDir <> '' then
+    AddCandidate(BaseDir);
+
+  // 6. Adiciona candidatos da pasta Documentos do Usuário (ex: C:\Users\marco\Documents\ComponentesLazarus\lazdarkcomp)
+  UserProf := GetEnvironmentVariable('USERPROFILE');
+  if UserProf <> '' then
   begin
-    Candidates[4] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
-    Candidates[5] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'Restaurar-Layout-Lazarus.cmd';
-  end
-  else
-  begin
-    Candidates[4] := '';
-    Candidates[5] := '';
+    AddCandidate(IncludeTrailingPathDelimiter(UserProf) + 'Documents' + PathDelim + 'ComponentesLazarus' + PathDelim + 'lazdarkcomp');
+    AddCandidate(IncludeTrailingPathDelimiter(UserProf) + 'Documents' + PathDelim + 'ComponentesLazarus' + PathDelim + 'lazdarkcomp' + PathDelim + 'scripts');
+    AddCandidate(IncludeTrailingPathDelimiter(UserProf) + 'Documents' + PathDelim + 'lazdarkcomp');
+    AddCandidate(IncludeTrailingPathDelimiter(UserProf) + 'Documents' + PathDelim + 'lazdarkcomp' + PathDelim + 'scripts');
+    AddCandidate(IncludeTrailingPathDelimiter(UserProf) + 'Documents' + PathDelim + 'metadark_safe');
   end;
 
-  Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
-  Candidates[7] := IncludeTrailingPathDelimiter(BaseDir) + 'Restaurar-Layout-Lazarus.cmd';
+  // 7. Varredura pelas unidades do sistema (C:, D:, E:, etc.)
+  for DriveChar := 'C' to 'Z' do
+  begin
+    AddCandidate(DriveChar + ':\ComponentesLazarus\lazdarkcomp');
+    AddCandidate(DriveChar + ':\ComponentesLazarus\lazdarkcomp\scripts');
+    AddCandidate(DriveChar + ':\Componentes\lazdarkcomp');
+    AddCandidate(DriveChar + ':\Componentes\lazdarkcomp\scripts');
+    AddCandidate(DriveChar + ':\lazdarkcomp');
+    AddCandidate(DriveChar + ':\lazdarkcomp\scripts');
+    AddCandidate(DriveChar + ':\lazarus\scripts');
+  end;
 
+  // 8. Retorna o primeiro candidato que existir fisicamente
   for i := Low(Candidates) to High(Candidates) do
   begin
     if (Candidates[i] <> '') and FileExists(Candidates[i]) then
@@ -571,7 +666,7 @@ end;
 
 procedure RunRestorationScript;
 var
-  ScriptPath, ConfigPath, Ext: string;
+  ScriptPath, ConfigPath, Ext, DestDir: string;
   Proc: TProcess;
 begin
   try
@@ -584,6 +679,24 @@ begin
     ConfigPath := '';
     if LazarusIDE <> nil then
       ConfigPath := LazarusIDE.GetPrimaryConfigPath;
+
+    // Copia preventivamente os scripts para a pasta de configurações da IDE
+    if (ConfigPath <> '') and DirectoryExists(ConfigPath) then
+    begin
+      try
+        DestDir := IncludeTrailingPathDelimiter(ConfigPath) + 'scripts';
+        ForceDirectories(DestDir);
+        SimpleCopyFileSafe(ScriptPath, IncludeTrailingPathDelimiter(DestDir) + ExtractFileName(ScriptPath));
+        SimpleCopyFileSafe(ChangeFileExt(ScriptPath, '.cmd'), IncludeTrailingPathDelimiter(DestDir) + 'Restaurar-Layout-Lazarus.cmd');
+        SimpleCopyFileSafe(ChangeFileExt(ScriptPath, '.ps1'), IncludeTrailingPathDelimiter(DestDir) + 'Restaurar-Layout-Lazarus.ps1');
+      except
+      end;
+    end;
+
+    // Se o script for .cmd, mas existir o equivalente .ps1, prioriza executar diretamente via PowerShell
+    if (LowerCase(ExtractFileExt(ScriptPath)) = '.cmd') and 
+       FileExists(ChangeFileExt(ScriptPath, '.ps1')) then
+      ScriptPath := ChangeFileExt(ScriptPath, '.ps1');
 
     Ext := LowerCase(ExtractFileExt(ScriptPath));
     Proc := TProcess.Create(nil);
