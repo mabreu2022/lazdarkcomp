@@ -82,7 +82,7 @@ if (-not $Silent) {
     Write-Host ""
 }
 
-# 4. XML da estrutura docada padrao perfeita (Flat layout sem nós intermediários que quebram âncoras)
+# 4. XML da estrutura docada padrao perfeita (Layout Delphi estavel e aninhado com conteineres)
 $dockInnerXml = @"
   <Version Value="1" />
   <MainConfig>
@@ -93,83 +93,79 @@ $dockInnerXml = @"
             <Rect Right="1920" Bottom="1020" />
           </WorkArea>
         </Bounds>
-        <Item1 Name="AnchorDockSite10" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="7" PixelsPerInch="120">
+        <Item1 Name="AnchorDockSite10" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">
           <Bounds Top="100" Width="1920" Height="866" SplitterPos="98" />
           <Anchors Align="Bottom" />
-          <Item1 Name="ObjectInspectorDlg" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-            <Bounds Width="324" Height="866" />
-            <Anchors Right="AnchorDockSplitter4" />
-          </Item1>
-          <Item2 Name="AnchorDockSplitter4" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-            <Bounds Left="324" Width="5" Height="866" />
-          </Item2>
-          <Item3 Name="SourceNotebook" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-            <Bounds Left="329" Width="1223" Height="620" />
-            <Anchors Left="AnchorDockSplitter4" Right="AnchorDockSplitter3" Bottom="AnchorDockSplitter2" />
-          </Item3>
-          <Item4 Name="AnchorDockSplitter2" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-            <Bounds Left="329" Top="620" Width="1223" Height="5" />
+          <Item1 Name="AnchorDockSite12" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="3" PixelsPerInch="120">
+            <Bounds Left="329" Width="1223" Height="866" />
             <Anchors Left="AnchorDockSplitter4" Right="AnchorDockSplitter3" />
-          </Item4>
-          <Item5 Name="AnchorDockSite11" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">
-            <Bounds Left="329" Top="625" Width="1223" Height="241" />
-            <Anchors Left="AnchorDockSplitter4" Top="AnchorDockSplitter2" Right="AnchorDockSplitter3" />
-            <Header PageIndex="0" />
-            <Item1 Name="MessagesView" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="1193" Height="215" />
-              <Anchors Align="Client" />
+            <Item1 Name="SourceNotebook" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+              <Bounds Width="1223" Height="620" />
+              <Anchors Bottom="AnchorDockSplitter2" />
             </Item1>
-            <Item2 Name="SearchResults" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="1193" Height="215" />
-              <Anchors Align="Client" />
+            <Item2 Name="AnchorDockSplitter2" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+              <Bounds Top="620" Width="1223" Height="5" />
             </Item2>
-            <Item3 Name="Watches" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="1193" Height="215" />
-              <Anchors Align="Client" />
+            <Item3 Name="AnchorDockSite11" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">
+              <Bounds Top="625" Width="1223" Height="241" />
+              <Anchors Top="AnchorDockSplitter2" />
+              <Header PageIndex="0" />
+              <Item1 Name="MessagesView" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+                <Bounds Width="1193" Height="215" />
+                <Anchors Align="Client" />
+              </Item1>
+              <Item2 Name="SearchResults" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+                <Bounds Width="1193" Height="215" />
+                <Anchors Align="Client" />
+              </Item2>
+              <Item3 Name="Watches" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+                <Bounds Width="1193" Height="215" />
+                <Anchors Align="Client" />
+              </Item3>
+              <Item4 Name="BreakPoints" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+                <Bounds Width="1193" Height="215" />
+                <Anchors Align="Client" />
+              </Item4>
+              <Item5 Name="Assembler" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+                <Bounds Width="1193" Height="215" />
+                <Anchors Align="Client" />
+              </Item5>
             </Item3>
-            <Item4 Name="BreakPoints" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="1193" Height="215" />
-              <Anchors Align="Client" />
-            </Item4>
-            <Item5 Name="Assembler" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="1193" Height="215" />
-              <Anchors Align="Client" />
-            </Item5>
-          </Item5>
-          <Item6 Name="AnchorDockSplitter3" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+          </Item1>
+          <Item2 Name="AnchorDockSplitter3" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
             <Bounds Left="1552" Width="11" Height="866" />
-          </Item6>
-          <Item7 Name="AnchorDockSite14" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="5" PixelsPerInch="120">
+          </Item2>
+          <Item3 Name="AnchorDockSite14" Type="Layout" WindowState="Maximized" Monitor="0" ChildCount="3" PixelsPerInch="120">
             <Bounds Left="1563" Width="357" Height="866" />
             <Anchors Left="AnchorDockSplitter3" />
             <Item1 Name="ProjectInspector" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Width="357" Height="340" />
+              <Bounds Width="357" Height="450" />
               <Anchors Bottom="AnchorDockSplitter5" />
             </Item1>
             <Item2 Name="AnchorDockSplitter5" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Top="340" Width="357" Height="5" />
+              <Bounds Top="450" Width="357" Height="5" />
             </Item2>
-            <Item3 Name="TLazDroidTargetDockForm" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Top="345" Width="357" Height="170" />
-              <Anchors Top="AnchorDockSplitter5" Bottom="AnchorDockSplitter6" />
-            </Item3>
-            <Item4 Name="AnchorDockSplitter6" Type="SplitterHorizontal" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-              <Bounds Top="515" Width="357" Height="5" />
-            </Item4>
-            <Item5 Name="AnchorDockSite15" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="2" PixelsPerInch="120">
-              <Bounds Top="520" Width="357" Height="346" />
-              <Anchors Top="AnchorDockSplitter6" />
+            <Item3 Name="AnchorDockSite15" Type="Pages" WindowState="Maximized" Monitor="0" ChildCount="2" PixelsPerInch="120">
+              <Bounds Top="455" Width="357" Height="411" />
+              <Anchors Top="AnchorDockSplitter5" />
               <Header PageIndex="0" />
               <Item1 Name="CodeExplorerView" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-                <Bounds Width="327" Height="310" />
+                <Bounds Width="327" Height="375" />
                 <Anchors Align="Client" />
               </Item1>
               <Item2 Name="ComponentList" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
-                <Bounds Width="327" Height="310" />
+                <Bounds Width="327" Height="375" />
                 <Anchors Align="Client" />
               </Item2>
-            </Item5>
-          </Item7>
+            </Item3>
+          </Item3>
+          <Item4 Name="ObjectInspectorDlg" Type="Control" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+            <Bounds Width="324" Height="866" />
+            <Anchors Right="AnchorDockSplitter4" />
+          </Item4>
+          <Item5 Name="AnchorDockSplitter4" Type="SplitterVertical" WindowState="Maximized" Monitor="0" PixelsPerInch="120">
+            <Bounds Left="324" Width="5" Height="866" />
+          </Item5>
         </Item1>
       </Item1>
     </Nodes>
