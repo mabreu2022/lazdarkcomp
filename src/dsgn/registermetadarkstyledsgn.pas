@@ -8,7 +8,8 @@ uses
   Classes, SysUtils, Controls, Dialogs, Forms, Process,
   IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf,
   IDECommands, MenuIntf, ToolBarIntf,
-  LazConfigStorage, BaseIDEIntf, Laz2_XMLCfg, PackageIntf,
+  LazConfigStorage, BaseIDEIntf, Laz2_XMLCfg, Laz2_DOM, Laz2_XMLRead, Laz2_XMLWrite, PackageIntf,
+  EnvironmentOpts,
   uDarkStyleParams, uDarkStyleSchemes, uMetaDarkStyle,
   MetaDarkStyleDSGNOptionsFrame, MetaDarkStyleDSGNOptions;
 
@@ -310,10 +311,10 @@ begin
 
   if PkgDir <> '' then
   begin
-    Candidates[0] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
-    Candidates[1] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
-    Candidates[2] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.cmd';
-    Candidates[3] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[0] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[1] := IncludeTrailingPathDelimiter(PkgDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[2] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.ps1';
+    Candidates[3] := IncludeTrailingPathDelimiter(PkgDir) + 'Restaurar-Layout-Lazarus.cmd';
   end
   else
   begin
@@ -325,7 +326,7 @@ begin
 
   if PrimaryCfg <> '' then
   begin
-    Candidates[4] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+    Candidates[4] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
     Candidates[5] := IncludeTrailingPathDelimiter(PrimaryCfg) + 'Restaurar-Layout-Lazarus.cmd';
   end
   else
@@ -334,13 +335,174 @@ begin
     Candidates[5] := '';
   end;
 
-  Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.cmd';
+  Candidates[6] := IncludeTrailingPathDelimiter(BaseDir) + 'scripts' + PathDelim + 'Restaurar-Layout-Lazarus.ps1';
   Candidates[7] := IncludeTrailingPathDelimiter(BaseDir) + 'Restaurar-Layout-Lazarus.cmd';
 
   for i := Low(Candidates) to High(Candidates) do
   begin
     if (Candidates[i] <> '') and FileExists(Candidates[i]) then
       Exit(Candidates[i]);
+  end;
+end;
+
+function HasSourceNotebookInAnchorDocking(ANode: TDOMNode): Boolean;
+var
+  i: Integer;
+  Elem: TDOMElement;
+begin
+  Result := False;
+  if ANode = nil then Exit;
+  if ANode.NodeType = ELEMENT_NODE then
+  begin
+    Elem := TDOMElement(ANode);
+    if Elem.GetAttribute('Name') = 'SourceNotebook' then
+      Exit(True);
+  end;
+  for i := 0 to ANode.ChildNodes.Count - 1 do
+  begin
+    if HasSourceNotebookInAnchorDocking(ANode.ChildNodes[i]) then
+      Exit(True);
+  end;
+end;
+
+procedure UpdateEnvironmentOptionsDockLayout(const AConfigDir: string);
+var
+  EnvFile: string;
+  EnvDoc, LayoutDoc: TXMLDocument;
+  SS: TStringStream;
+  FS: TFileStream;
+  DesktopsNode, DesktopNode, OldAnchor, NewAnchor, ChildNode, FormNode, PosNode, VisNode: TDOMNode;
+  DskElem, FormElem, PosElem: TDOMElement;
+  DskName, DockMaster: string;
+  i, j, k: Integer;
+  FormsList: array[0..4] of record
+    Name, Left, Top, Width, Height: string;
+  end;
+begin
+  try
+    EnvFile := IncludeTrailingPathDelimiter(AConfigDir) + 'environmentoptions.xml';
+    if not FileExists(EnvFile) then
+      Exit;
+
+    EnvDoc := nil;
+    LayoutDoc := nil;
+    SS := nil;
+    try
+      ReadXMLFile(EnvDoc, EnvFile);
+      if EnvDoc = nil then Exit;
+
+      DesktopsNode := EnvDoc.DocumentElement.FindNode('Desktops');
+      if DesktopsNode = nil then Exit;
+
+      if DesktopsNode is TDOMElement then
+        TDOMElement(DesktopsNode).SetAttribute('ActiveDesktop', 'default docked');
+
+      FormsList[0].Name := 'SourceNotebook';
+      FormsList[0].Left := '329'; FormsList[0].Top := '100'; FormsList[0].Width := '1223'; FormsList[0].Height := '620';
+
+      FormsList[1].Name := 'MessagesView';
+      FormsList[1].Left := '329'; FormsList[1].Top := '725'; FormsList[1].Width := '1223'; FormsList[1].Height := '241';
+
+      FormsList[2].Name := 'ObjectInspectorDlg';
+      FormsList[2].Left := '5'; FormsList[2].Top := '100'; FormsList[2].Width := '324'; FormsList[2].Height := '866';
+
+      FormsList[3].Name := 'ProjectInspector';
+      FormsList[3].Left := '1563'; FormsList[3].Top := '100'; FormsList[3].Width := '357'; FormsList[3].Height := '340';
+
+      FormsList[4].Name := 'MainIDE';
+      FormsList[4].Left := '-9'; FormsList[4].Top := '-9'; FormsList[4].Width := '1920'; FormsList[4].Height := '966';
+
+      SS := TStringStream.Create(CleanAnchorDockLayoutXML);
+      ReadXMLFile(LayoutDoc, SS);
+
+      for i := 0 to DesktopsNode.ChildNodes.Count - 1 do
+      begin
+        DesktopNode := DesktopsNode.ChildNodes[i];
+        if (DesktopNode.NodeType = ELEMENT_NODE) and (Pos('Desktop', DesktopNode.NodeName) = 1) then
+        begin
+          DskElem := TDOMElement(DesktopNode);
+          DskName := DskElem.GetAttribute('Name');
+          DockMaster := DskElem.GetAttribute('DockMaster');
+
+          if (DockMaster = 'TIDEAnchorDockMaster') or
+             (Pos('dock', LowerCase(DskName)) > 0) or
+             (Pos('mauricio', LowerCase(DskName)) > 0) then
+          begin
+            DskElem.SetAttribute('DockMaster', 'TIDEAnchorDockMaster');
+
+            OldAnchor := DskElem.FindNode('AnchorDocking');
+            if OldAnchor <> nil then
+              DskElem.RemoveChild(OldAnchor).Free;
+
+            if (LayoutDoc <> nil) and (LayoutDoc.DocumentElement <> nil) then
+            begin
+              NewAnchor := EnvDoc.CreateElement('AnchorDocking');
+              for j := 0 to LayoutDoc.DocumentElement.ChildNodes.Count - 1 do
+              begin
+                ChildNode := EnvDoc.ImportNode(LayoutDoc.DocumentElement.ChildNodes[j], True);
+                NewAnchor.AppendChild(ChildNode);
+              end;
+              DskElem.AppendChild(NewAnchor);
+            end;
+
+            for k := Low(FormsList) to High(FormsList) do
+            begin
+              FormNode := DskElem.FindNode(FormsList[k].Name);
+              if FormNode = nil then
+              begin
+                FormNode := EnvDoc.CreateElement(FormsList[k].Name);
+                DskElem.AppendChild(FormNode);
+              end;
+              FormElem := TDOMElement(FormNode);
+
+              PosNode := FormElem.FindNode('CustomPosition');
+              if PosNode = nil then
+              begin
+                PosNode := EnvDoc.CreateElement('CustomPosition');
+                FormElem.AppendChild(PosNode);
+              end;
+              PosElem := TDOMElement(PosNode);
+              PosElem.SetAttribute('Left', FormsList[k].Left);
+              PosElem.SetAttribute('Top', FormsList[k].Top);
+              PosElem.SetAttribute('Width', FormsList[k].Width);
+              PosElem.SetAttribute('Height', FormsList[k].Height);
+
+              VisNode := FormElem.FindNode('Visible');
+              if VisNode = nil then
+              begin
+                VisNode := EnvDoc.CreateElement('Visible');
+                FormElem.AppendChild(VisNode);
+              end;
+              TDOMElement(VisNode).SetAttribute('Value', 'True');
+            end;
+          end;
+        end;
+      end;
+
+      WriteXMLFile(EnvDoc, EnvFile);
+    finally
+      if LayoutDoc <> nil then LayoutDoc.Free;
+      if SS <> nil then SS.Free;
+      if EnvDoc <> nil then EnvDoc.Free;
+    end;
+
+    // Se o XMLCfg do EnvironmentOptions estiver em memoria, recarrega a partir do disco atualizado
+    if (EnvironmentOptions <> nil) and (EnvironmentOptions.XMLCfg <> nil) and FileExists(EnvFile) then
+    begin
+      try
+        FS := TFileStream.Create(EnvFile, fmOpenRead or fmShareDenyNone);
+        try
+          EnvironmentOptions.XMLCfg.Clear;
+          EnvironmentOptions.XMLCfg.ReadFromStream(FS);
+        finally
+          FS.Free;
+        end;
+      except
+        // ignora se recarga em memoria falhar
+      end;
+    end;
+  except
+    // protecao contra erro de IO
   end;
 end;
 
@@ -399,6 +561,9 @@ begin
     finally
       SL.Free;
     end;
+
+    // 4. Atualizar diretamente o environmentoptions.xml em disco e em memoria
+    UpdateEnvironmentOptionsDockLayout(TargetDir);
   except
     // proteção contra falha de escrita em disco
   end;
@@ -442,10 +607,13 @@ begin
       begin
         Proc.Executable := 'cmd.exe';
         Proc.Parameters.Add('/c');
+        Proc.Parameters.Add(ScriptPath);
+        Proc.Parameters.Add('-Silent');
         if ConfigPath <> '' then
-          Proc.Parameters.Add('"' + ScriptPath + '" -Silent -TargetConfigDir "' + ConfigPath + '"')
-        else
-          Proc.Parameters.Add('"' + ScriptPath + '" -Silent');
+        begin
+          Proc.Parameters.Add('-TargetConfigDir');
+          Proc.Parameters.Add(ConfigPath);
+        end;
       end;
       Proc.Options := [poNoConsole];
       Proc.Execute;
@@ -543,6 +711,14 @@ begin
 end;
 
 procedure SetDarkStyle;
+var
+  TargetDir, EnvFile: string;
+  EnvDoc: TXMLDocument;
+  DesktopsNode, DesktopNode, AnchorNode: TDOMNode;
+  DskElem: TDOMElement;
+  DskName, DockMaster, ActiveDesktop: string;
+  NeedsRepair: Boolean;
+  i: Integer;
 begin
  {$IF DEFINED(MSWINDOWS)}
   try
@@ -558,11 +734,57 @@ begin
     if MetaDarkStyleDSGNOpt.AppMode = amOptForceLight then
       ApplyEditorColorScheme('Default');
 
-    // Se o anchordocklayout.xml não existir, cria o layout limpo de fábrica
     if (LazarusIDE <> nil) and (LazarusIDE.GetPrimaryConfigPath <> '') then
     begin
-      if not FileExists(IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath) + 'anchordocklayout.xml') then
-        ApplyCleanDockedLayout(LazarusIDE.GetPrimaryConfigPath);
+      TargetDir := IncludeTrailingPathDelimiter(LazarusIDE.GetPrimaryConfigPath);
+
+      // 1. Se o anchordocklayout.xml não existir, cria o layout limpo de fábrica
+      if not FileExists(TargetDir + 'anchordocklayout.xml') then
+        ApplyCleanDockedLayout(TargetDir);
+
+      // 2. Verificar se o environmentoptions.xml tem o layout docado bagunçado/corrompido
+      EnvFile := TargetDir + 'environmentoptions.xml';
+      if FileExists(EnvFile) then
+      begin
+        NeedsRepair := False;
+        EnvDoc := nil;
+        try
+          ReadXMLFile(EnvDoc, EnvFile);
+          if (EnvDoc <> nil) and (EnvDoc.DocumentElement <> nil) then
+          begin
+            DesktopsNode := EnvDoc.DocumentElement.FindNode('Desktops');
+            if DesktopsNode is TDOMElement then
+            begin
+              ActiveDesktop := TDOMElement(DesktopsNode).GetAttribute('ActiveDesktop');
+              for i := 0 to DesktopsNode.ChildNodes.Count - 1 do
+              begin
+                DesktopNode := DesktopsNode.ChildNodes[i];
+                if (DesktopNode.NodeType = ELEMENT_NODE) and (Pos('Desktop', DesktopNode.NodeName) = 1) then
+                begin
+                  DskElem := TDOMElement(DesktopNode);
+                  DskName := DskElem.GetAttribute('Name');
+                  DockMaster := DskElem.GetAttribute('DockMaster');
+                  if (DockMaster = 'TIDEAnchorDockMaster') or
+                     (ActiveDesktop <> '') and (DskName = ActiveDesktop) then
+                  begin
+                    AnchorNode := DskElem.FindNode('AnchorDocking');
+                    if (AnchorNode = nil) or not HasSourceNotebookInAnchorDocking(AnchorNode) then
+                    begin
+                      NeedsRepair := True;
+                      Break;
+                    end;
+                  end;
+                end;
+              end;
+            end;
+          end;
+        finally
+          if EnvDoc <> nil then EnvDoc.Free;
+        end;
+
+        if NeedsRepair then
+          ApplyCleanDockedLayout(TargetDir);
+      end;
     end;
 
     ApplyMetaDarkStyle(GetScheme(MetaDarkStyleDSGNOpt.ColorScheme));
