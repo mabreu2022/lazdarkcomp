@@ -5,17 +5,32 @@ unit registerMetaDarkStyleDSGN;
 interface
 
 uses
-  Classes, SysUtils,
+  Classes, SysUtils, Forms, Controls, ComCtrls, Dialogs,
   IDEOptionsIntf, IDEOptEditorIntf, LazIDEIntf, lazconf,
+  IDECommands, MenuIntf, ToolBarIntf, IDEImagesIntf,
   uDarkStyleParams, uDarkStyleSchemes, uMetaDarkStyle,
   MetaDarkStyleDSGNOptionsFrame, MetaDarkStyleDSGNOptions;
 
 var
   MetaDarkStyleOptionsID: integer = 1000;
+  ToggleThemeCommand: TIDECommand = nil;
+  ToggleThemeButtonCmd: TIDEButtonCommand = nil;
+  ToggleThemeMenuCmd: TIDEMenuCommand = nil;
 
 procedure Register;
 
 implementation
+
+type
+  { TToggleThemeHelper }
+  TToggleThemeHelper = class
+  public
+    procedure ToggleThemeClicked(Sender: TObject);
+    procedure AsyncEnsureToolbarButton(Data: PtrInt);
+  end;
+
+var
+  ToggleThemeHelper: TToggleThemeHelper = nil;
 
 const
   DarkModernXMLContent: string =
@@ -118,6 +133,120 @@ begin
   end;
 end;
 
+procedure TToggleThemeHelper.ToggleThemeClicked(Sender: TObject);
+var
+  NewMode: TAppModeOpt;
+  Msg, NewThemeName: string;
+  Res: Integer;
+  RestartCmd: TIDECommand;
+begin
+  if MetaDarkStyleDSGNOpt = nil then
+  begin
+    MetaDarkStyleDSGNOpt := TMetaDarkStyleDSGNOptions.Create;
+    MetaDarkStyleDSGNOpt.LoadSafe;
+  end;
+
+  if MetaDarkStyleDSGNOpt.AppMode = amOptForceLight then
+  begin
+    NewMode := amOptForceDark;
+    NewThemeName := 'Tema Escuro (Dark Mode)';
+  end
+  else
+  begin
+    NewMode := amOptForceLight;
+    NewThemeName := 'Tema Claro (Light Mode)';
+  end;
+
+  Msg := 'O tema da IDE foi alterado para: ' + NewThemeName + '.' + LineEnding + LineEnding +
+         'Para aplicar a renderização em todas as janelas e componentes nativos da IDE, ' +
+         'é necessário reiniciar o Lazarus.' + LineEnding + LineEnding +
+         'Deseja reiniciar a IDE agora?';
+
+  Res := QuestionDlg('Alternar Tema da IDE', Msg, mtConfirmation, [mrYes, 'Reiniciar Agora', mrNo, 'Mais Tarde'], 0);
+
+  // Salva a nova configuração
+  MetaDarkStyleDSGNOpt.AppMode := NewMode;
+  MetaDarkStyleDSGNOpt.SaveSafe;
+
+  if Res = mrYes then
+  begin
+    RestartCmd := IDECommandList.FindIDECommand(ecRestart);
+    if RestartCmd <> nil then
+      RestartCmd.Execute(nil);
+  end;
+end;
+
+procedure TToggleThemeHelper.AsyncEnsureToolbarButton(Data: PtrInt);
+var
+  MainForm: TForm;
+  CoolBar: TCoolBar;
+  ToolBar: TToolBar;
+  Btn, Sep: TToolButton;
+  i, j: Integer;
+  Found: Boolean;
+  ImgIdx: Integer;
+begin
+  MainForm := LazarusIDE.GetMainBar;
+  if MainForm = nil then Exit;
+
+  CoolBar := nil;
+  for i := 0 to MainForm.ControlCount - 1 do
+    if MainForm.Controls[i] is TCoolBar then
+    begin
+      CoolBar := TCoolBar(MainForm.Controls[i]);
+      Break;
+    end;
+
+  if CoolBar = nil then Exit;
+
+  Found := False;
+  for i := 0 to CoolBar.Bands.Count - 1 do
+  begin
+    if (CoolBar.Bands[i].Control is TToolBar) then
+    begin
+      ToolBar := TToolBar(CoolBar.Bands[i].Control);
+      for j := 0 to ToolBar.ButtonCount - 1 do
+      begin
+        if ToolBar.Buttons[j].Name = 'btnToggleDarkTheme' then
+        begin
+          Found := True;
+          Break;
+        end;
+      end;
+    end;
+    if Found then Break;
+  end;
+
+  if not Found and (CoolBar.Bands.Count > 0) and (CoolBar.Bands[0].Control is TToolBar) then
+  begin
+    ToolBar := TToolBar(CoolBar.Bands[0].Control);
+
+    Sep := TToolButton.Create(ToolBar);
+    Sep.Style := tbsSeparator;
+    Sep.Parent := ToolBar;
+
+    Btn := TToolButton.Create(ToolBar);
+    Btn.Name := 'btnToggleDarkTheme';
+    Btn.Caption := 'Tema';
+    if (MetaDarkStyleDSGNOpt <> nil) and (MetaDarkStyleDSGNOpt.AppMode = amOptForceLight) then
+      Btn.Hint := 'Tema atual: Claro (Light). Clique para alternar para Escuro (Dark)'
+    else
+      Btn.Hint := 'Tema atual: Escuro (Dark). Clique para alternar para Claro (Light)';
+    Btn.ShowHint := True;
+
+    ImgIdx := -1;
+    if IDEImages <> nil then
+      ImgIdx := IDEImages.GetImageIndex('menu_environment_options');
+    if ImgIdx < 0 then
+      ImgIdx := IDEImages.LoadImage('menu_environment_options');
+    if ImgIdx >= 0 then
+      Btn.ImageIndex := ImgIdx;
+
+    Btn.OnClick := @ToggleThemeClicked;
+    Btn.Parent := ToolBar;
+  end;
+end;
+
 procedure SetDarkStyle;
 begin
  {$IF DEFINED(MSWINDOWS)}
@@ -129,17 +258,43 @@ begin
   MetaDarkStyleDSGNOpt.LoadSafe;
   PreferredAppMode:=AppModeOpt2PreferredAppMode(MetaDarkStyleDSGNOpt.AppMode);
   ApplyMetaDarkStyle(GetScheme(MetaDarkStyleDSGNOpt.ColorScheme));
+
+  if ToggleThemeHelper <> nil then
+    Application.QueueAsyncCall(@ToggleThemeHelper.AsyncEnsureToolbarButton, 0);
  {$ENDIF}
 end;
 
 procedure Register;
+var
+  IDECommandCat: TIDECommandCategory;
 begin
   DeployDarkModernColorScheme;
   MetaDarkStyleOptionsID:=RegisterIDEOptionsEditor(GroupEnvironment,
                                                    TDarkStyleDSGNOptionsFrame,
                                                    MetaDarkStyleOptionsID)^.Index;
+
+  if ToggleThemeHelper = nil then
+    ToggleThemeHelper := TToggleThemeHelper.Create;
+
+  IDECommandCat := IDECommandList.FindCategoryByName('Environment');
+  if IDECommandCat = nil then
+    IDECommandCat := IDECommandList.FindCategoryByName('View');
+
+  ToggleThemeCommand := RegisterIDECommand(IDECommandCat, 'ToggleDarkStyleTheme',
+    'Alternar Tema Claro/Escuro', CleanIDEShortCut, @ToggleThemeHelper.ToggleThemeClicked, nil);
+
+  ToggleThemeMenuCmd := RegisterIDEMenuCommand(itmOptionsDialogs, 'ToggleDarkStyleTheme',
+    'Alternar Tema Claro/Escuro', nil, nil, ToggleThemeCommand, 'menu_environment_options');
+
+  ToggleThemeButtonCmd := RegisterIDEButtonCommand(ToggleThemeCommand);
+  if (ToggleThemeButtonCmd <> nil) and (ToggleThemeMenuCmd <> nil) then
+    ToggleThemeButtonCmd.ImageIndex := ToggleThemeMenuCmd.ImageIndex;
 end;
 
 initialization
+  ToggleThemeHelper := TToggleThemeHelper.Create;
   AddBootHandler(libhEnvironmentOptionsLoaded,@SetDarkStyle);
+
+finalization
+  FreeAndNil(ToggleThemeHelper);
 end.

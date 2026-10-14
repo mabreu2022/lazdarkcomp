@@ -11,7 +11,7 @@
       <SearchPaths>
         <IncludeFiles Value="$(LazarusDir)\ide\include\$(TargetOS)"/>
         <Libraries Value="E:\lazarus\units\x86_64-win64\win32\"/>
-        <OtherUnitFiles Value="src;$(LazarusDir)\ide"/>
+        <OtherUnitFiles Value="src\dsgn;src;$(LazarusDir)\ide"/>
         <UnitOutputDirectory Value="lib\$(TargetCPU)-$(TargetOS)"/>
       </SearchPaths>
     </CompilerOptions>
@@ -20,12 +20,12 @@
     <Version Minor="9"/>
     <Files>
       <Item>
-        <Filename Value="src\registermetadarkstyledsgn.pas"/>
+        <Filename Value="src\dsgn\registermetadarkstyledsgn.pas"/>
         <HasRegisterProc Value="True"/>
         <UnitName Value="registerMetaDarkStyleDSGN"/>
       </Item>
       <Item>
-        <Filename Value="src\metadarkstyledsgnoptionsframe.pas"/>
+        <Filename Value="src\dsgn\metadarkstyledsgnoptionsframe.pas"/>
         <UnitName Value="MetaDarkStyleDSGNOptionsFrame"/>
       </Item>
     </Files>

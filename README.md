@@ -7,6 +7,7 @@ This solves the classic problem where applying a dark theme turned the designed 
 ---
 
 ## Features
+- **One-Click Theme Toggle Button**: Quick-access button directly on the IDE toolbar and menu (**Tools -> Toggle Dark/Light Theme**) to easily switch between Light and Dark mode with an instant restart prompt.
 - **Full Dark IDE**: Source Editor, Object Inspector, Messages, Menus, Toolbars, and Docked Panels render in sleek dark mode.
 - **Decoupled Form Designer**: Form design surfaces (`Form1`) and controls in design mode maintain their clean, native light background (`$F0F0F0`), grid dots, and standard contrast.
 - **100% Self-Contained Package**: Requires **no modifications** to Lazarus or LCL source code.
@@ -58,6 +59,15 @@ lazbuild --add-package-link metadarkstyledsgn.lpk
 lazbuild --add-package metadarkstyledsgn
 lazbuild --build-ide
 ```
+
+---
+
+## Theme Toggle Button (Quick Switch)
+LazDarkComp includes a **Theme (Tema)** toggle button directly in the IDE:
+- **Toolbar Button**: Located on the main Lazarus toolbar for one-click switching.
+- **Menu Entry**: Available under **Tools (Ferramentas)** -> **Toggle Dark/Light Theme (Alternar Tema Claro/Escuro)**.
+- **Shortcut**: Configurable via **Tools** -> **Options** -> **Environment** -> **Key mapping** (search for *ToggleDarkStyleTheme*).
+- Clicking the button prompts to restart the IDE, applying the changes cleanly in ~1 second.
 
 ---
 
