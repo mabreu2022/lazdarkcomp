@@ -54,7 +54,7 @@ uses
   Classes, SysUtils, Win32Int, WSLCLClasses, Forms, Windows, Win32Proc, Menus,
   LCLType, Win32WSComCtrls, ComCtrls, LMessages, Win32WSStdCtrls,
   WSStdCtrls, Win32WSControls, StdCtrls, WSControls, Graphics, Themes, LazUTF8,
-  UxTheme, Win32Themes, ExtCtrls, WSMenus, JwaWinGDI, FPImage, Math, uDarkStyle,
+  UxTheme, Win32Themes, ExtCtrls, WSExtCtrls, WSMenus, JwaWinGDI, FPImage, Math, uDarkStyle,
   WSComCtrls, CommCtrl, uImport, WSForms, Win32WSButtons, Buttons, Win32Extra,
   Win32WSForms, Win32WSSpin, Spin, Win32WSMenus, Dialogs, GraphUtil,
   gmap, gutil, TmSchema, InterfaceBase;
@@ -68,6 +68,26 @@ type
     { TWin32WSWinControlDark }
 
     TWin32WSWinControlDark = class(TWin32WSWinControl)
+    published
+      class function CreateHandle(const AWinControl: TWinControl;
+            const AParams: TCreateParams): HWND; override;
+      class function GetDefaultColor(const AControl: TControl;
+            const ADefaultColorType: TDefaultColorType): TColor; override;
+    end;
+
+    { TWin32WSCustomPanelDark }
+
+    TWin32WSCustomPanelDark = class(TWSCustomPanel)
+    published
+      class function CreateHandle(const AWinControl: TWinControl;
+            const AParams: TCreateParams): HWND; override;
+      class function GetDefaultColor(const AControl: TControl;
+            const ADefaultColorType: TDefaultColorType): TColor; override;
+    end;
+
+    { TWin32WSCustomGroupBoxDark }
+
+    TWin32WSCustomGroupBoxDark = class(TWSCustomGroupBox)
     published
       class function CreateHandle(const AWinControl: TWinControl;
             const AParams: TCreateParams): HWND; override;
@@ -238,7 +258,10 @@ begin
       Exit(True);
     if (Cur is TCustomForm) and Assigned(Forms.IsFormDesign) and Forms.IsFormDesign(TWinControl(Cur)) then
       Exit(True);
-    if Cur.ClassNameIs('TResizeFormContainer') or Cur.ClassNameIs('TResizeContainer') or Cur.ClassNameIs('TResizeControl') then
+    if Cur.ClassNameIs('TResizeFormContainer') or Cur.ClassNameIs('TResizeContainer') or
+       Cur.ClassNameIs('TResizeControl') or Cur.ClassNameIs('TResizer') or
+       Cur.ClassNameIs('TDesignForm') or Cur.ClassNameIs('TDesignFormIDE') or
+       Cur.ClassNameIs('TAnchorControl') or Cur.ClassNameIs('TBorderControl') then
       Exit(True);
     Cur := Cur.Parent;
   end;
@@ -250,6 +273,9 @@ begin
     if (Comp is TCustomForm) and ((TCustomForm(Comp).Designer <> nil) or ([csDesigning, csDesignInstance] * Comp.ComponentState <> [])) then
       Exit(True);
     if (Comp is TWinControl) and (Comp is TCustomForm) and Assigned(Forms.IsFormDesign) and Forms.IsFormDesign(TWinControl(Comp)) then
+      Exit(True);
+    if Comp.ClassNameIs('TDesignForm') or Comp.ClassNameIs('TDesignFormIDE') or
+       Comp.ClassNameIs('TResizeFormContainer') or Comp.ClassNameIs('TResizeContainer') then
       Exit(True);
     Comp := Comp.Owner;
   end;
@@ -289,8 +315,9 @@ begin
   FControl := AControl;
   FOldWndProc := AControl.WindowProc;
   AControl.WindowProc := @FormWndProc;
-  TWinControlDark(AControl).ControlStyle :=
-    TWinControlDark(AControl).ControlStyle + [csOpaque] - [csParentBackground];
+  if AControl is TCustomForm then
+    TWinControlDark(AControl).ControlStyle :=
+      TWinControlDark(AControl).ControlStyle + [csOpaque] - [csParentBackground];
 end;
 
 procedure TDesignFormHook.FormWndProc(var Message: TLMessage);
@@ -298,38 +325,46 @@ var
   DC: HDC;
   ARect: TRect;
   HBr: HBRUSH;
+  OldPainting: Boolean;
 begin
-  case Message.Msg of
-    LM_ERASEBKGND:
-    begin
-      DC := HDC(Message.WParam);
-      if DC <> 0 then
+  OldPainting := g_IsPaintingDesignControl;
+  g_IsPaintingDesignControl := True;
+  try
+    case Message.Msg of
+      LM_ERASEBKGND:
       begin
-        if (FControl.Color = clDefault) or (FControl.Color = clBtnFace) then
+        DC := HDC(Message.WParam);
+        if DC <> 0 then
         begin
-          ARect := Classes.Rect(0, 0, FControl.Width, FControl.Height);
-          HBr := Windows.CreateSolidBrush($F0F0F0);
-          try
-            Windows.FillRect(DC, ARect, HBr);
-          finally
-            Windows.DeleteObject(HBr);
+          if ((FControl is TCustomForm) or (FControl is TCustomPanel) or (FControl is TCustomGroupBox)) and
+             ((FControl.Color = clDefault) or (FControl.Color = clBtnFace)) then
+          begin
+            ARect := Classes.Rect(0, 0, FControl.Width, FControl.Height);
+            HBr := Windows.CreateSolidBrush($F0F0F0);
+            try
+              Windows.FillRect(DC, ARect, HBr);
+            finally
+              Windows.DeleteObject(HBr);
+            end;
+            Message.Result := 1;
+            Exit;
           end;
-          Message.Result := 1;
-          Exit;
         end;
       end;
+      LM_DESTROY:
+      begin
+        if (FControl <> nil) and FControl.HandleAllocated then
+          Windows.RemoveProp(FControl.Handle, 'MDSDesignHook');
+        FControl.WindowProc := FOldWndProc;
+        FOldWndProc(Message);
+        Free;
+        Exit;
+      end;
     end;
-    LM_DESTROY:
-    begin
-      if (FControl <> nil) and FControl.HandleAllocated then
-        Windows.RemoveProp(FControl.Handle, 'MDSDesignHook');
-      FControl.WindowProc := FOldWndProc;
-      FOldWndProc(Message);
-      Free;
-      Exit;
-    end;
+    FOldWndProc(Message);
+  finally
+    g_IsPaintingDesignControl := OldPainting;
   end;
-  FOldWndProc(Message);
 end;
 
 procedure AttachDesignFormHook(AControl: TWinControl);
@@ -350,13 +385,14 @@ begin
   Info := GetWin32WindowInfo(wnd);
   if Info <> nil then
   begin
-    Info^.needParentPaint := False;
-    if Info^.WinControl <> nil then
+    if (Info^.WinControl <> nil) and (Info^.WinControl is TCustomForm) then
     begin
+      Info^.needParentPaint := False;
       TWinControlDark(Info^.WinControl).ControlStyle :=
         TWinControlDark(Info^.WinControl).ControlStyle + [csOpaque] - [csParentBackground];
-      AttachDesignFormHook(Info^.WinControl);
     end;
+    if Info^.WinControl <> nil then
+      AttachDesignFormHook(Info^.WinControl);
   end;
 end;
 
@@ -881,6 +917,54 @@ begin
     Result := inherited GetDefaultColor(AControl, ADefaultColorType);
 end;
 
+{ TWin32WSCustomPanelDark }
+
+class function TWin32WSCustomPanelDark.CreateHandle(
+  const AWinControl: TWinControl; const AParams: TCreateParams): HWND;
+begin
+  Result := inherited CreateHandle(AWinControl, AParams);
+  if (Result <> 0) and IsDesignControl(AWinControl) then
+    ApplyLightModeToDesignWindow(Result);
+end;
+
+class function TWin32WSCustomPanelDark.GetDefaultColor(
+  const AControl: TControl; const ADefaultColorType: TDefaultColorType): TColor;
+begin
+  if (AControl <> nil) and IsDesignControl(AControl) then
+  begin
+    case ADefaultColorType of
+      dctBrush: Result := $F0F0F0;
+      dctFont:  Result := clBlack;
+    end;
+  end
+  else
+    Result := inherited GetDefaultColor(AControl, ADefaultColorType);
+end;
+
+{ TWin32WSCustomGroupBoxDark }
+
+class function TWin32WSCustomGroupBoxDark.CreateHandle(
+  const AWinControl: TWinControl; const AParams: TCreateParams): HWND;
+begin
+  Result := inherited CreateHandle(AWinControl, AParams);
+  if (Result <> 0) and IsDesignControl(AWinControl) then
+    ApplyLightModeToDesignWindow(Result);
+end;
+
+class function TWin32WSCustomGroupBoxDark.GetDefaultColor(
+  const AControl: TControl; const ADefaultColorType: TDefaultColorType): TColor;
+begin
+  if (AControl <> nil) and IsDesignControl(AControl) then
+  begin
+    case ADefaultColorType of
+      dctBrush: Result := $F0F0F0;
+      dctFont:  Result := clBlack;
+    end;
+  end
+  else
+    Result := inherited GetDefaultColor(AControl, ADefaultColorType);
+end;
+
 { TWin32WSCustomFormDark }
 
 function FormWndProc2(Window: HWnd; Msg: UInt; WParam: Windows.WParam;
@@ -1143,7 +1227,15 @@ const
   { dctFont  } clBtnText
   );
 begin
-  Result:= DefColors[ADefaultColorType];
+  if (AControl <> nil) and IsDesignControl(AControl) then
+  begin
+    case ADefaultColorType of
+      dctBrush: Result := clWhite;
+      dctFont:  Result := clBlack;
+    end;
+  end
+  else
+    Result:= DefColors[ADefaultColorType];
 end;
 
 { TWin32WSStatusBarDark }
@@ -1731,6 +1823,19 @@ function GetSysColorDark(nIndex: longint): DWORD; stdcall;
 begin
   if g_IsPaintingDesignControl then
   begin
+    case nIndex of
+      COLOR_WINDOW:        Exit($00FFFFFF);
+      COLOR_WINDOWTEXT:    Exit($00000000);
+      COLOR_BTNFACE:       Exit($00F0F0F0);
+      COLOR_BTNTEXT:       Exit($00000000);
+      COLOR_HIGHLIGHT:     Exit($00D77800);
+      COLOR_HIGHLIGHTTEXT: Exit($00FFFFFF);
+      COLOR_GRAYTEXT:      Exit($006D6D6D);
+      COLOR_3DSHADOW:      Exit($00A0A0A0);
+      COLOR_3DHIGHLIGHT:   Exit($00FFFFFF);
+      COLOR_3DLIGHT:       Exit($00E3E3E3);
+      COLOR_3DDKSHADOW:    Exit($00696969);
+    end;
     if Assigned(RealGetSysColor) then
       Exit(RealGetSysColor(nIndex))
     else
@@ -1751,6 +1856,10 @@ function GetSysColorBrushDark(nIndex: longint): HBRUSH; stdcall;
 begin
   if g_IsPaintingDesignControl then
   begin
+    case nIndex of
+      COLOR_WINDOW:     Exit(HBRUSH(Windows.GetStockObject(WHITE_BRUSH)));
+      COLOR_WINDOWTEXT: Exit(HBRUSH(Windows.GetStockObject(BLACK_BRUSH)));
+    end;
     if Assigned(RealGetSysColorBrush) then
       Exit(RealGetSysColorBrush(nIndex))
     else
@@ -1930,6 +2039,12 @@ begin
 
   with TWinControl.Create(nil) do Free;
   RegisterWSComponent(TWinControl, TWin32WSWinControlDark);
+
+  WSExtCtrls.RegisterCustomPanel;
+  RegisterWSComponent(TCustomPanel, TWin32WSCustomPanelDark);
+
+  WSStdCtrls.RegisterCustomGroupBox;
+  RegisterWSComponent(TCustomGroupBox, TWin32WSCustomGroupBoxDark);
 
   WSComCtrls.RegisterStatusBar;
   RegisterWSComponent(TStatusBar, TWin32WSStatusBarDark);
@@ -2554,7 +2669,15 @@ var
   OldColor: COLORREF;
   ClassName: LPCWSTR;
   wnd: HWND;
+  BkPixel: DWORD;
+  Lum: Integer;
 begin
+  if g_IsPaintingDesignControl then
+  begin
+    Result:= TrampolineDrawThemeText(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, dwTextFlags2, pRect);
+    Exit;
+  end;
+
   wnd := WindowFromDC(hdc);
   if (wnd <> 0) and IsDesignWindow(wnd) then
   begin
@@ -2590,6 +2713,14 @@ begin
           Result:= TrampolineDrawThemeText(hTheme, hdc, iPartId, iStateId, pszText, iCharCount, dwTextFlags, dwTextFlags2, pRect);
           Exit;
         end;
+      end;
+
+      BkPixel := Windows.GetPixel(hdc, pRect.Left + 2, (pRect.Top + pRect.Bottom) div 2);
+      if BkPixel <> DWORD($FFFFFFFF) then
+      begin
+        Lum := ((BkPixel and $FF) * 299 + ((BkPixel shr 8) and $FF) * 587 + ((BkPixel shr 16) and $FF) * 114) div 1000;
+        if Lum > 140 then
+          OldColor := 0; // Black text for bright headers/backgrounds
       end;
 
       OldColor:= SetTextColor(hdc, OldColor);
