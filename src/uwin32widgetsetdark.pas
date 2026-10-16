@@ -1361,6 +1361,8 @@ end;
 var
   OldColor: COLORREF;
   wnd: HWND;
+  BkPixel: DWORD;
+  Lum: Integer;
 begin
   if g_IsPaintingDesignControl then
   begin
@@ -1389,6 +1391,14 @@ begin
       OldColor:= SysColor[COLOR_BTNTEXT]
   end else
     OldColor:= SysColor[COLOR_BTNTEXT];
+
+  BkPixel := Windows.GetPixel(hdc, pRect.Left + 2, (pRect.Top + pRect.Bottom) div 2);
+  if BkPixel <> DWORD($FFFFFFFF) then
+  begin
+    Lum := ((BkPixel and $FF) * 299 + ((BkPixel shr 8) and $FF) * 587 + ((BkPixel shr 16) and $FF) * 114) div 1000;
+    if Lum > 140 then
+      OldColor := 0; // Black text for bright headers/backgrounds
+  end;
 
   OldColor:= SetTextColor(hdc, OldColor);
   SetBkMode(hdc, TRANSPARENT);
