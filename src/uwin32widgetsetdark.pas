@@ -1,4 +1,4 @@
-{
+﻿{
   Double Commander
   -------------------------------------------------------------------------
   Windows dark style widgetset implementation
@@ -77,7 +77,7 @@ type
 
     { TWin32WSCustomPanelDark }
 
-    TWin32WSCustomPanelDark = class(TWSCustomPanel)
+    TWin32WSCustomPanelDark = class(TWin32WSWinControl)
     published
       class function CreateHandle(const AWinControl: TWinControl;
             const AParams: TCreateParams): HWND; override;
@@ -87,7 +87,7 @@ type
 
     { TWin32WSCustomGroupBoxDark }
 
-    TWin32WSCustomGroupBoxDark = class(TWSCustomGroupBox)
+    TWin32WSCustomGroupBoxDark = class(TWin32WSCustomGroupBox)
     published
       class function CreateHandle(const AWinControl: TWinControl;
             const AParams: TCreateParams): HWND; override;
@@ -1923,8 +1923,6 @@ begin
     else begin
       lpClassName:= ClassNameW;
     end;
-  end else begin
-    dwExStyle:= dwExStyle or WS_EX_CONTEXTHELP;
   end;
   Result:= __CreateWindowExW(dwExStyle, lpClassName, lpWindowName, dwStyle, X, Y, nWidth, nHeight, hWndParent, hMenu, hInstance, lpParam);
 end;
@@ -2624,15 +2622,10 @@ begin
     Exit;
   end;
 
-  if (hwnd <> 0) then
+  if (hwnd <> 0) and (lstrcmpiW(pszClassList, VSCLASS_MONTHCAL) = 0) then
   begin
-    P:= GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-
-    if (P and WS_EX_CONTEXTHELP = 0) or (lstrcmpiW(pszClassList, VSCLASS_MONTHCAL) = 0) then
-    begin
-      Result:= TrampolineOpenThemeData(hwnd, pszClassList);
-      Exit;
-    end;
+    Result:= TrampolineOpenThemeData(hwnd, pszClassList);
+    Exit;
   end;
 
   if lstrcmpiW(pszClassList, VSCLASS_TAB) = 0 then
