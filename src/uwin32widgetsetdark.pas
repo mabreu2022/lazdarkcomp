@@ -228,6 +228,7 @@ var
 
   RealGetSysColor: function(nIndex: longint): DWORD; stdcall = nil;
   RealGetSysColorBrush: function(nIndex: longint): HBRUSH; stdcall = nil;
+  RealDrawEdge: function(hdc: HDC; var qrc: TRect; edge: UINT; grfFlags: UINT): BOOL; stdcall = nil;
 
   g_IsPaintingDesignControl: Boolean = False;
 
@@ -1781,11 +1782,21 @@ var
 
 begin
   if g_IsPaintingDesignControl then
-    Exit(Windows.DrawEdge(hdc, qrc, edge, grfFlags));
+  begin
+    if Assigned(RealDrawEdge) then
+      Exit(RealDrawEdge(hdc, qrc, edge, grfFlags))
+    else
+      Exit(Windows.DrawEdge(hdc, qrc, edge, grfFlags));
+  end;
 
   wnd := WindowFromDC(hdc);
   if (wnd <> 0) and IsDesignWindow(wnd) then
-    Exit(Windows.DrawEdge(hdc, qrc, edge, grfFlags));
+  begin
+    if Assigned(RealDrawEdge) then
+      Exit(RealDrawEdge(hdc, qrc, edge, grfFlags))
+    else
+      Exit(Windows.DrawEdge(hdc, qrc, edge, grfFlags));
+  end;
 
   Result:= False;
   if IsRectEmpty(qrc) then
@@ -2916,6 +2927,7 @@ begin
   hModule:= GetModuleHandle(user32);
   Pointer(RealGetSysColor):= GetProcAddress(hModule, 'GetSysColor');
   Pointer(RealGetSysColorBrush):= GetProcAddress(hModule, 'GetSysColorBrush');
+  Pointer(RealDrawEdge):= GetProcAddress(hModule, 'DrawEdge');
 
   // Override several system functions
   pLibrary:= FindImportLibrary(MainInstance, user32);
