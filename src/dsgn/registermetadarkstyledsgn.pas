@@ -21,6 +21,8 @@ var
 
 procedure ApplyEditorColorScheme(const AScheme: string);
 procedure ApplyCleanDockedLayout(AConfigDir: string = '');
+procedure ApplyObjectInspectorPropertyColors(const AConfigDir: string; IsDark: Boolean);
+procedure ApplyObjectInspectorYellowColors(const AConfigDir: string);
 procedure RunRestorationScript;
 procedure Register;
 
@@ -779,6 +781,7 @@ begin
     begin
       // Retornar ao padrão claro
       ApplyEditorColorScheme('Default');
+      ApplyObjectInspectorPropertyColors(LazarusIDE.GetPrimaryConfigPath, False);
       // Executar a restauração do layout para modo claro
       RunRestorationScript;
     end
@@ -787,6 +790,7 @@ begin
       // Ativar esquema escuro no editor de códigos
       DeployDarkModernColorScheme;
       ApplyEditorColorScheme('DarkModern');
+      ApplyObjectInspectorPropertyColors(LazarusIDE.GetPrimaryConfigPath, True);
       // Executar a restauração do layout para modo escuro
       RunRestorationScript;
     end;
@@ -823,14 +827,37 @@ begin
   end;
 end;
 
-procedure ApplyObjectInspectorYellowColors(const AConfigDir: string);
+procedure ApplyObjectInspectorPropertyColors(const AConfigDir: string; IsDark: Boolean);
 var
-  EnvFile: string;
+  EnvFile, TargetColorStr: string;
+  TargetColorInt: Integer;
   EnvDoc: TXMLDocument;
   DesktopsNode, DesktopNode, OINode, ColorNode, ValNode, RefNode: TDOMNode;
   i: Integer;
   Modified: Boolean;
 begin
+  if IsDark then
+  begin
+    TargetColorStr := '65535'; // clYellow
+    TargetColorInt := 65535;
+  end
+  else
+  begin
+    TargetColorStr := '255';   // clRed
+    TargetColorInt := 255;
+  end;
+
+  // 1. Atualizar EnvironmentOptions.XMLCfg em memoria se disponivel
+  try
+    if (EnvironmentOptions <> nil) and (EnvironmentOptions.XMLCfg <> nil) then
+    begin
+      EnvironmentOptions.XMLCfg.SetValue('ObjectInspectorOptions/Color/Value', TargetColorInt);
+      EnvironmentOptions.XMLCfg.SetValue('ObjectInspectorOptions/Color/References', TargetColorInt);
+    end;
+  except
+    // Safe fallback
+  end;
+
   if AConfigDir = '' then Exit;
   EnvFile := IncludeTrailingPathDelimiter(AConfigDir) + 'environmentoptions.xml';
   if not FileExists(EnvFile) then Exit;
@@ -842,6 +869,55 @@ begin
       ReadXMLFile(EnvDoc, EnvFile);
       if (EnvDoc = nil) or (EnvDoc.DocumentElement = nil) then Exit;
 
+      // 2. Global ObjectInspectorOptions (<CONFIG><Lazarus><ObjectInspectorOptions>)
+      OINode := EnvDoc.DocumentElement.FindNode('ObjectInspectorOptions');
+      if OINode = nil then
+      begin
+        OINode := EnvDoc.CreateElement('ObjectInspectorOptions');
+        EnvDoc.DocumentElement.AppendChild(OINode);
+        Modified := True;
+      end;
+
+      ColorNode := OINode.FindNode('Color');
+      if ColorNode = nil then
+      begin
+        ColorNode := EnvDoc.CreateElement('Color');
+        OINode.AppendChild(ColorNode);
+        Modified := True;
+      end;
+
+      if TDOMElement(ColorNode).GetAttribute('Value') <> TargetColorStr then
+      begin
+        TDOMElement(ColorNode).SetAttribute('Value', TargetColorStr);
+        Modified := True;
+      end;
+      if TDOMElement(ColorNode).GetAttribute('References') <> TargetColorStr then
+      begin
+        TDOMElement(ColorNode).SetAttribute('References', TargetColorStr);
+        Modified := True;
+      end;
+
+      ValNode := ColorNode.FindNode('Value');
+      if ValNode <> nil then
+      begin
+        if TDOMElement(ValNode).GetAttribute('Value') <> TargetColorStr then
+        begin
+          TDOMElement(ValNode).SetAttribute('Value', TargetColorStr);
+          Modified := True;
+        end;
+      end;
+
+      RefNode := ColorNode.FindNode('References');
+      if RefNode <> nil then
+      begin
+        if TDOMElement(RefNode).GetAttribute('References') <> TargetColorStr then
+        begin
+          TDOMElement(RefNode).SetAttribute('References', TargetColorStr);
+          Modified := True;
+        end;
+      end;
+
+      // 3. Desktop-specific ObjectInspectorOptions (<Desktops><DesktopX><ObjectInspectorOptions>)
       DesktopsNode := EnvDoc.DocumentElement.FindNode('Desktops');
       if DesktopsNode is TDOMElement then
       begin
@@ -851,47 +927,36 @@ begin
           if (DesktopNode.NodeType = ELEMENT_NODE) and (Pos('Desktop', DesktopNode.NodeName) = 1) then
           begin
             OINode := DesktopNode.FindNode('ObjectInspectorOptions');
-            if OINode = nil then
+            if OINode <> nil then
             begin
-              OINode := EnvDoc.CreateElement('ObjectInspectorOptions');
-              DesktopNode.AppendChild(OINode);
-              Modified := True;
-            end;
+              ColorNode := OINode.FindNode('Color');
+              if ColorNode <> nil then
+              begin
+                if TDOMElement(ColorNode).GetAttribute('Value') <> TargetColorStr then
+                begin
+                  TDOMElement(ColorNode).SetAttribute('Value', TargetColorStr);
+                  Modified := True;
+                end;
+                if TDOMElement(ColorNode).GetAttribute('References') <> TargetColorStr then
+                begin
+                  TDOMElement(ColorNode).SetAttribute('References', TargetColorStr);
+                  Modified := True;
+                end;
 
-            ColorNode := OINode.FindNode('Color');
-            if ColorNode = nil then
-            begin
-              ColorNode := EnvDoc.CreateElement('Color');
-              OINode.AppendChild(ColorNode);
-              Modified := True;
-            end;
+                ValNode := ColorNode.FindNode('Value');
+                if (ValNode <> nil) and (TDOMElement(ValNode).GetAttribute('Value') <> TargetColorStr) then
+                begin
+                  TDOMElement(ValNode).SetAttribute('Value', TargetColorStr);
+                  Modified := True;
+                end;
 
-            ValNode := ColorNode.FindNode('Value');
-            if ValNode = nil then
-            begin
-              ValNode := EnvDoc.CreateElement('Value');
-              TDOMElement(ValNode).SetAttribute('Value', 'clYellow');
-              ColorNode.AppendChild(ValNode);
-              Modified := True;
-            end
-            else if TDOMElement(ValNode).GetAttribute('Value') <> 'clYellow' then
-            begin
-              TDOMElement(ValNode).SetAttribute('Value', 'clYellow');
-              Modified := True;
-            end;
-
-            RefNode := ColorNode.FindNode('References');
-            if RefNode = nil then
-            begin
-              RefNode := EnvDoc.CreateElement('References');
-              TDOMElement(RefNode).SetAttribute('Value', 'clYellow');
-              ColorNode.AppendChild(RefNode);
-              Modified := True;
-            end
-            else if TDOMElement(RefNode).GetAttribute('Value') <> 'clYellow' then
-            begin
-              TDOMElement(RefNode).SetAttribute('Value', 'clYellow');
-              Modified := True;
+                RefNode := ColorNode.FindNode('References');
+                if (RefNode <> nil) and (TDOMElement(RefNode).GetAttribute('References') <> TargetColorStr) then
+                begin
+                  TDOMElement(RefNode).SetAttribute('References', TargetColorStr);
+                  Modified := True;
+                end;
+              end;
             end;
           end;
         end;
@@ -905,6 +970,11 @@ begin
   finally
     if EnvDoc <> nil then EnvDoc.Free;
   end;
+end;
+
+procedure ApplyObjectInspectorYellowColors(const AConfigDir: string);
+begin
+  ApplyObjectInspectorPropertyColors(AConfigDir, True);
 end;
 
 procedure SetDarkStyle;
@@ -982,8 +1052,10 @@ begin
         if NeedsRepair then
           ApplyCleanDockedLayout(TargetDir);
 
-        if MetaDarkStyleDSGNOpt.AppMode <> amOptForceLight then
-          ApplyObjectInspectorYellowColors(TargetDir);
+        if MetaDarkStyleDSGNOpt.AppMode = amOptForceLight then
+          ApplyObjectInspectorPropertyColors(TargetDir, False)
+        else
+          ApplyObjectInspectorPropertyColors(TargetDir, True);
       end;
     end;
 

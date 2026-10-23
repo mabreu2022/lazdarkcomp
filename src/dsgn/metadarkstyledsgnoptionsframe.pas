@@ -1,4 +1,4 @@
-unit MetaDarkStyleDSGNOptionsFrame;
+﻿unit MetaDarkStyleDSGNOptionsFrame;
 
 {$mode ObjFPC}{$H+}
 
@@ -36,7 +36,7 @@ type
 implementation
 
 uses
-  registerMetaDarkStyleDSGN;
+  registerMetaDarkStyleDSGN, LazIDEIntf;
 
 {$R *.lfm}
 
@@ -89,11 +89,13 @@ begin
     if NewMode = amOptForceLight then
     begin
       ApplyEditorColorScheme('Default');
+      ApplyObjectInspectorPropertyColors(LazarusIDE.GetPrimaryConfigPath, False);
       RunRestorationScript;
     end
     else if NewMode = amOptForceDark then
     begin
       ApplyEditorColorScheme('DarkModern');
+      ApplyObjectInspectorPropertyColors(LazarusIDE.GetPrimaryConfigPath, True);
       RunRestorationScript;
     end;
   end;
@@ -124,4 +126,5 @@ begin
 end;
 
 end.
+
 
